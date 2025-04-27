@@ -158,11 +158,39 @@ def __dwt__(*args, level=None, wavelet="db6"):
     Ws = []
     for X in args:
         Ws += [pywt.wavedec(X, wavelet, level=level)]
-    level = len(Ws[-1])-1
+    # level = len(Ws[-1])-1
     return Ws
 
 
-def __idwt__(*args, N, level=None, wavelet="db6"):
+def waverec_2d(coeffs, N, wavelet, mode='symmetric'):
+    def reconstruct_level(coeffs, level_to_keep):
+        # Make a copy of the coeffs
+        coeffs_copy = [np.zeros_like(c) for c in coeffs]
+
+        # Keep only the desired level coefficients
+        coeffs_copy[level_to_keep] = coeffs[level_to_keep]
+
+        # Reconstruct signal
+        return pywt.waverec(coeffs_copy, wavelet=wavelet, mode=mode)
+
+    # Example: Reconstruct each level
+    reconstructed_levels = []
+    for level in range(len(coeffs)):
+        rec = reconstruct_level(coeffs, level)
+        reconstructed_levels.append(rec[:N])  # Adjust length if needed
+
+    # reconstructed_levels[0] = Approximation (lowest frequency)
+    # reconstructed_levels[1], [2], etc. = Details (higher frequencies)
+    return reconstructed_levels
+
+def __idwt__(*args, N, wavelet='db6', mode='symmetric'):
+    Ys = []
+    for W in args:
+        reconstructed_signal = waverec_2d(W, N, wavelet, mode=mode)
+        Ys += [np.array(reconstructed_signal[::-1])]
+    return Ys
+
+def __idwt__deprecated(*args, N, level=None, wavelet="db6"):
     """
     function: performs Inverse Discrete Wavelet Transform
     call: __idwt__()
@@ -250,9 +278,10 @@ def universal_wt(signal, method='dwt', fs=20, f0=1/(3*60*60), f1=10, fn=180,
         waves = __dwt__(signal, level=lvl, **kwargs)
         if inv:
             N = np.array(signal).shape[-1]
-            waves = __idwt__(*waves, N=N, level=lvl, **kwargs)
-        wave = waves[0][0]
-    return wave.real, sj
+            waves = __idwt__(*waves, N=N, **kwargs)
+            waves = waves[0].real
+        # wave = waves[0][0]
+    return waves, sj
 
 
 def conditional_sampling(Y12, *args, names=['xy', 'a'], label={1: "+", -1: "-"}, false=0):
