@@ -116,11 +116,29 @@ def nearest(items, pivot, direction=0):
 
 
 def update_nested_dict(d, u):
+    """
+    Recursively updates a nested dictionary `d` with values from another dictionary `u`.
+    If a key in `u` maps to a dictionary and the corresponding key in `d` also maps to a dictionary,
+    the function updates the nested dictionary in `d`. Otherwise, it overwrites the value in `d`.
+
+    Args:
+        d (dict): The dictionary to update.
+        u (dict): The dictionary containing updates.
+
+    Returns:
+        dict: The updated dictionary.
+    """
+    # Iterate over each key-value pair in the update dictionary `u`
     for k, v in u.items():
+        # Check if the current value is a dictionary
         if isinstance(v, dict):
+            # If the corresponding value in `d` is also a dictionary, recursively update it
+            # Use `d.get(k, {})` to handle cases where the key `k` is not already in `d`
             d[k] = update_nested_dict(d.get(k, {}), v)
         else:
+            # If the value is not a dictionary, directly update/overwrite the key in `d`
             d[k] = v
+    # Return the updated dictionary
     return d
 
 
