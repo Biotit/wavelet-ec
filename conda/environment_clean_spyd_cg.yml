@@ -1,0 +1,58 @@
+name: wavec2
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Core Python
+  - python
+  - pip
+
+  # Notebook / IPython stack
+  - ipykernel
+  - ipython
+  - jupyter_client
+  - jupyter_core
+  - traitlets
+  - comm
+  - debugpy
+  - tornado
+  - nest-asyncio
+  - psutil
+  - pygments
+  - matplotlib-inline
+
+  # Spyder support
+  - spyder-kernels=3.1
+
+  # Scientific stack (formerly in pip section)
+  - numpy
+  - scipy
+  - pandas
+  - scikit-learn
+  - matplotlib
+  - pywavelets
+  - pillow
+  - pyyaml
+  - contourpy
+  - cycler
+  - fonttools
+  - kiwisolver
+  - pyparsing
+  - pytz
+  - threadpoolctl
+  - tzdata
+  - joblib
+
+  # Base system libs (minimal + solver-friendly)
+  - bzip2
+  - ca-certificates
+  - openssl
+  - tk
+  - zeromq
+  - pyzmq
+
+  # Only pip package remaining
+  - pip:
+      - pycwt
+

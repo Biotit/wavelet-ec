@@ -71,7 +71,7 @@ logger = logging.getLogger('wvlt.pipeline')
 
 def integrate_cospectra(data, f0, dst_path=None):
     data0 = data[(np.isnan(data['natural_frequency']) == False) * (data['natural_frequency'] >= f0)
-                 ].groupby(['variable', 'TIMESTAMP'])['value'].agg(np.nansum).reset_index(drop=False)
+                 ].groupby(['variable', 'TIMESTAMP'])['value'].agg("sum").reset_index(drop=False)
     data1 = data[np.isnan(data['natural_frequency'])].drop(
         'natural_frequency', axis=1)
 
@@ -87,12 +87,15 @@ def integrate_cospectra(data, f0, dst_path=None):
 def integrate_cospectra_from_file(root, f0, pattern='', dst_path=None):
     # use glob.glob to find files matching the pattern
     logger = logging.getLogger('wvlt.pipeline.integrate_cospectra_from_file')
+    logger.debug(f"Try to integrate cospectra from file in folder {root}.")
     if isinstance(root, str):
         saved_files = {}
         for name in os.listdir(root):
+            # logger.debug(f"Looking through {name}")
             dateparts = re.findall(pattern, name, flags=re.IGNORECASE)
             if len(dateparts) == 1:
                 saved_files[dateparts[0]] = os.path.join(root, name)
+        # logger.debug(f"Found {saved_files} that match the provided pattern: {pattern}.")
 
         def __read__(date, path):
             r = pd.read_csv(path, skiprows=11, sep=',')
@@ -451,7 +454,7 @@ def process(#ymd, raw_kwargs,
                 general_config['sitename'])+'_cov_{}_'+run_time+'.csv'))
         else:
             output_pathmodel = str(os.path.join(output_folderpath, 'wavelet_full_cospectra', str(
-                general_config['sitename'])+'_full_cospectra_{}_'+run_time+'.csv'))
+                general_config['sitename'])+'_CDWT_full_cospectra_{}_'+run_time+'.csv'))
         hc24.mkdirs(output_pathmodel)
         try:
             hc24.save_locals(local_args, os.path.join(output_folderpath, f'log/setup_{run_time}.yml'))
@@ -477,7 +480,7 @@ def process(#ymd, raw_kwargs,
     logger.info(f'In load_main.')
 
     if verbosity:
-        print(f'\nRUNNING WAVELET TRASNFORM ({method})')
+        print(f'\nRUNNING WAVELET TRANSFORM ({method})')
     
     _, _, _f = ymd
     ymd = hc24.list_time_in_period(*ymd, processing_time_duration, include='both')
@@ -522,12 +525,16 @@ def process(#ymd, raw_kwargs,
             # run by varstorun
             output_kwargs.update({'output_path': output_path + '.part'})
             allvars = transform_kwargs['varstorun']
+            logger.debug(f"Allvars that get looped through: {allvars}")
             saved_files = []
             for f in allvars:
-                transform_kwargs['varstorun'] = [f]
+                f_transform_kwargs = transform_kwargs.copy()
+                f_transform_kwargs['varstorun'] = [f]
+                logger.debug(f"Available data columns: {data.columns.tolist()}")
+                logger.debug(f"Processing formula: {f}, varstorun passed to main(): {transform_kwargs['varstorun']}")
                 output = main(data, period=[min(yl), max(yl)], 
                               meta=meta,
-                              output_kwargs=output_kwargs, **transform_kwargs)
+                              output_kwargs=output_kwargs, **f_transform_kwargs)
                 saved_files.append(output.saved)
                 fulldata = pd.concat([fulldata, output.data], axis=0)
                 
@@ -560,6 +567,7 @@ def main(data, varstorun, period=None, average_period='30min', output_kwargs={},
     logger.debug(f'Input data shape: {data.shape}.')
     # logger.debug(f'Input data shape: {data.head(1)}.')
 
+    logger.debug(f'varstorun is: {varstorun}.')
     vars_unique = list(set([var for f in varstorun for var in formula_to_vars(f).uniquevars]))
     logger.debug(f'Unique vars: {vars_unique}.')
 
@@ -580,6 +588,7 @@ def main(data, varstorun, period=None, average_period='30min', output_kwargs={},
     logger.debug(f'\n{wvvar.head()}\n')
     
     # select valid dates
+    logger.debug(f'Period of interest is from {period[0]} to {period[1]}')
     if period: wvvar = wvvar[(wvvar['TIMESTAMP'] > period[0]) & (wvvar['TIMESTAMP'] < period[1])]
     wvvar = wvvar.reset_index(drop=True)
 
@@ -642,7 +651,7 @@ def main(data, varstorun, period=None, average_period='30min', output_kwargs={},
     __ID_COLS__ = list(
         set(['TIMESTAMP', 'natural_frequency']) & set(growingdata.columns))
     growingdata = growingdata.groupby(__ID_COLS__).agg(
-        np.nanmean).reset_index(drop=False)
+        "mean").reset_index(drop=False)
     
     # integrate
 
@@ -650,9 +659,9 @@ def main(data, varstorun, period=None, average_period='30min', output_kwargs={},
     growingdata = (growingdata.sort_values(by=__ID_COLS__)
                 .melt(__ID_COLS__))
     
-    logger.debug(f"\tSaving data in {output_kwargs['output_path']}.")
     saved_files = []
     if output_kwargs.get('output_path', None):
+        logger.debug(f"\tSaving data in {output_kwargs['output_path']}.")
         for thisdate, thisdata in growingdata.groupby(growingdata.TIMESTAMP):
             thisdate_ = thisdate.strftime('%Y%m%d%H%M')
             dst_path = output_kwargs.get('output_path').format(thisdate_)

@@ -121,9 +121,11 @@ def integrate_full_spectra_into_file(site_name, output_folderpath, integration_p
     # CONCAT INTO SINGLE FILE
     dst_path = os.path.join(output_folderpath, str(
         site_name)+f'_CDWT_full_cospectra.csv')
-    
     pipeline.integrate_cospectra_from_file(os.path.join(output_folderpath, 'wavelet_full_cospectra'),
-                                          1/integration_period, '_CDWT_full_cospectra_([0-9]{12}).csv$', dst_path)
+                                          1/integration_period, '_CDWT_full_cospectra_([0-9]{12})_', dst_path)
+    
+    #pipeline.integrate_cospectra_from_file(os.path.join(output_folderpath, 'wavelet_full_cospectra'),
+    #                                      1/integration_period, '_CDWT_full_cospectra_([0-9]{12}).csv$', dst_path)
     #hc24.concat_into_single_file(
     #    os.path.join(outputpath, 'wavelet_full_cospectra'), str(site_name)+f'_CDWT_full_cospectra.+.{fileduration}mn.csv', 
     #    output_path=dst_path, skiprows=10)

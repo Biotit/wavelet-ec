@@ -369,7 +369,7 @@ def universal_wt(signal, method='dwt', fs=20, f0=1/(3*60*60), f1=10, fn=180,
             logger.warning('UserWarning: Continuous wavelet transform (cwt) not found. Running discrete version.')
             method = 'dwt'
     
-    elif method== "dwt":
+    elif method == "dwt":
         """Run Discrete Wavelet Transform"""
         lvl = kwargs.pop('level', int(np.ceil(np.log2(fs/f0))))
         # _l if s0*2^j; fs*2**(-_l) if Hz; (1/fs)*2**_l if sec.
@@ -385,5 +385,5 @@ def universal_wt(signal, method='dwt', fs=20, f0=1/(3*60*60), f1=10, fn=180,
                                    n0=len(signal), 
                                    #wavelet=kwargs.get('mother_wavelet', '')
                                    )
-    
     return type('var_', (object,), {'wave': waves, 'sj': sj, 'coi': coi, 'method': method, 'fs': fs, 'f0': f0, 'f1': f1, 'fn': fn})
+    # return {'wave': waves, 'sj': sj, 'coi': coi, 'method': method, 'fs': fs, 'f0': f0, 'f1': f1, 'fn': fn}
