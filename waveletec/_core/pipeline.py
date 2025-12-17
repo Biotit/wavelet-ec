@@ -70,6 +70,9 @@ logger = logging.getLogger('wvlt.pipeline')
 
 
 def integrate_cospectra(data, f0, dst_path=None):
+    logger = logging.getLogger('wvlt.pipeline.integrate_cospectra')
+    logger.debug(f"Integrate cospectra with f0 = {f0}")
+    
     data0 = data[(np.isnan(data['natural_frequency']) == False) * (data['natural_frequency'] >= f0)
                  ].groupby(['variable', 'TIMESTAMP'])['value'].agg("sum").reset_index(drop=False)
     data1 = data[np.isnan(data['natural_frequency'])].drop(
@@ -81,13 +84,14 @@ def integrate_cospectra(data, f0, dst_path=None):
                               'variable').reset_index(drop=False)
 
     if dst_path:
+        logger.debug(f"Writing cospectra with f0 = {f0} to file {dst_path}")
         datai.to_file(dst_path, index=False)
     return datai
 
 def integrate_cospectra_from_file(root, f0, pattern='', dst_path=None):
     # use glob.glob to find files matching the pattern
     logger = logging.getLogger('wvlt.pipeline.integrate_cospectra_from_file')
-    logger.debug(f"Try to integrate cospectra from file in folder {root}.")
+    logger.debug(f"Try to integrate cospectra from file in folder {root} with f0 = {f0}.")
     if isinstance(root, str):
         saved_files = {}
         for name in os.listdir(root):
@@ -432,7 +436,7 @@ def process(#ymd, raw_kwargs,
     }
 
     
-    run_time = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+    run_time = datetime.datetime.now().strftime("%Y%m%d%H%M")
     output_path = ""
     output_pathmodel = ""
     curoutpath_inprog = ""
@@ -552,9 +556,9 @@ def process(#ymd, raw_kwargs,
     logger.debug(f"output_pathmodel: {output_pathmodel}.")
     logger.debug(f"fulldata: {fulldata.head()}.")
     if output_pathmodel and not fulldata.empty:
-        # timestamp = pd.Timestamp.now().strftime('%Y%m%dT%H%M%S_%f')
-        dst_path = os.path.join(output_folderpath, os.path.basename(
-            output_pathmodel.format(run_time)))
+        #dst_path = os.path.join(output_folderpath, os.path.basename(
+        #    output_pathmodel.format(run_time)))
+        dst_path = os.path.join(output_folderpath + str(general_config['sitename']) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
         if integration_period:
             fulldata = integrate_cospectra(fulldata, 1/integration_period, dst_path=None)
         fulldata.to_csv(dst_path, index=False)

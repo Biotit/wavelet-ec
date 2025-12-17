@@ -69,6 +69,9 @@ def partition_DWCS(data, labelpositive='GPP', labelnegative='Reco', all='wco2',
 
 def partition_DWCS_H2O(data=None, NEE='NEE', GPP='GPP', Reco='Reco', CO2='wco2', 
                   CO2neg_H2Opos='wco2-wh2o+', CO2neg_H2Oneg='wco2-wh2o-', NIGHT=None):
+    logger = logging.getLogger('wvlt.partition.partition_DWCS_H2O')
+    logger.debug('Running partition_DWCS_H2O.')
+    
     if isinstance(data, str): data = pd.read_file(data)
     else: data = data.copy()
     
@@ -87,11 +90,14 @@ def partition_DWCS_H2O(data=None, NEE='NEE', GPP='GPP', Reco='Reco', CO2='wco2',
 
     data[NEE] = CO2
     #data_pt = data_pt[[NEE, GPP, Reco]]
+    logger.debug('Finished partition_DWCS_H2O.')
     return data
 
 def partition_DWCS_CH4(data=None, NEE='NEE', GPP='GPP', Reco='Reco', CO2='wco2', 
                   CO2pos_CH4pos='wco2+wch4+', CO2pos_CH4neg='wco2+wch4-', 
                   CO2neg_CH4pos='wco2-wch4+', CO2neg_CH4neg='wco2-wch4-', NIGHT=None):
+    logger = logging.getLogger('wvlt.partition.partition_DWCS_CH4')
+    logger.debug('Running partition_DWCS_CH4.')
     if isinstance(data, str): data = pd.read_file(data)
     
     CO2 = __input_to_series__(data, CO2)
@@ -111,6 +117,7 @@ def partition_DWCS_CH4(data=None, NEE='NEE', GPP='GPP', Reco='Reco', CO2='wco2',
 
     data[NEE] = CO2
     #data_pt = data_pt[[NEE, GPP, Reco]]
+    logger.debug('Finished partition_DWCS_CH4.')
     return data
 
 def partition_DWCS_CO(data=None, NEE='NEE', GPP='GPP', Reco='Reco', ffCO2='ffCO2',
@@ -120,6 +127,8 @@ def partition_DWCS_CO(data=None, NEE='NEE', GPP='GPP', Reco='Reco', ffCO2='ffCO2
                      CO2pos_COpos='wco2+wco+',
                      CO2pos_COneg='wco2+wco-',
                      NIGHT=None):
+    logger = logging.getLogger('wvlt.partition.partition_DWCS_CO')
+    logger.debug('Running partition_DWCS_CO.')
     if isinstance(data, str): data = pd.read_file(data)
     #prefix = 'DWnf_' #NEE.split('_', 1)[0] +'_'
     #suffix = ''
@@ -146,4 +155,5 @@ def partition_DWCS_CO(data=None, NEE='NEE', GPP='GPP', Reco='Reco', ffCO2='ffCO2
     data[ffCO2] = data[ffCO2] + remaining / 2
     
     #data = data[[NEE, GPP, Reco, ffCO2]]
+    logger.debug('Finished partition_DWCS_CO.')
     return data

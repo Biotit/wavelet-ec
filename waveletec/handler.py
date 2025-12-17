@@ -4,6 +4,7 @@ import sys
 import re
 import logging
 import datetime
+import glob
 # 3rd party modules
 import yaml
 # Project modules
@@ -117,10 +118,20 @@ def eddypro_wavelet_run(site_name, input_path, outputpath, datetimerange, acquis
     return data
 
 
-def integrate_full_spectra_into_file(site_name, output_folderpath, integration_period=60*30, **kwargs):
+def integrate_full_spectra_into_file(site_name, output_folderpath, integration_period=60*30, newlog=False, **kwargs):
     # CONCAT INTO SINGLE FILE
-    dst_path = os.path.join(output_folderpath, str(
-        site_name)+f'_CDWT_full_cospectra.csv')
+    
+    # activate new logging file? Useful if function is called on its own, e.g. outside of eddypro_wavelet_run and with time delay after the process().
+    if (output_folderpath is not None) and newlog:
+        hc24.start_logging(output_folderpath)
+    logger = logging.getLogger('wvlt.handler.integrate_full_spectra_into_file')
+    
+    dst_path = os.path.join(output_folderpath + str(site_name) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
+    
+    logger.info(f'Integrate files with _CDWT_full_cospectra_([0-9]{12})_ inside {output_folderpath} into {dst_path}.')
+    
+    #dst_path = os.path.join(output_folderpath, str(
+    #    site_name)+f'_CDWT_full_cospectra.csv')
     pipeline.integrate_cospectra_from_file(os.path.join(output_folderpath, 'wavelet_full_cospectra'),
                                           1/integration_period, '_CDWT_full_cospectra_([0-9]{12})_', dst_path)
     
@@ -129,16 +140,41 @@ def integrate_full_spectra_into_file(site_name, output_folderpath, integration_p
     #hc24.concat_into_single_file(
     #    os.path.join(outputpath, 'wavelet_full_cospectra'), str(site_name)+f'_CDWT_full_cospectra.+.{fileduration}mn.csv', 
     #    output_path=dst_path, skiprows=10)
-    
 
-def condition_sampling_partition(site_name, output_folderpath, variables_available=['u', 'v', 'w', 'ts', 'co2', 'h2o'], **kwargs):
+
+def condition_sampling_partition(site_name, output_folderpath, integration_period=None, variables_available=['u', 'v', 'w', 'ts', 'co2', 'h2o'], newlog=False, **kwargs):
     # RUN PARTITIONING
-    dst_path = os.path.join(output_folderpath, str(
-        site_name)+f'_CDWT_full_cospectra.csv')
+    #dst_path = os.path.join(output_folderpath, str(
+    #    site_name)+f'_CDWT_full_cospectra.csv')
+    
+    # activate new logging file? Useful if function is called on its own, e.g. outside of eddypro_wavelet_run and with time delay after the process().
+    if (output_folderpath is not None) and newlog:
+        hc24.start_logging(output_folderpath)
+        
+    logger = logging.getLogger('wvlt.handler.condition_sampling_partition')
+    
+    # to be able to have different integration_period = 1/f0, hence different high pass filters in the folder
+    # search for the pattern with variable minutes
+    if not integration_period:
+        pattern = os.path.join(output_folderpath, f"{site_name}_CDWT_fulldata_integrated_*min.csv")
+        matches = glob.glob(pattern)
+        if not matches:
+            raise FileNotFoundError(f"No file found matching {pattern}")
+        if len(matches) > 1:
+            logger.warning(f"Multiple files of integrated cospectra found: {matches}, taking the first one for partitioning! Set integration_period if want to use another one.")
+        dst_path = matches[0]
+        logger.info(f'Taking the file {dst_path} for partitioning.')
+    else:
+        dst_path = os.path.join(output_folderpath + str(site_name) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
+        logger.debug(f"Specified integration_period={integration_period}. Hence taking the file {dst_path}")
+        
 
     h2o_dw_required_variables = ['w','co2','h2o']
     is_lacking_variable = sum([v not in variables_available for v in h2o_dw_required_variables])
+    if is_lacking_variable:
+        logger.debug(f'For partition_DWCS_H2O with {h2o_dw_required_variables} lacking variables.')
     if not is_lacking_variable:
+        logger.debug(f'For partition_DWCS_H2O no lacking variables. Necessary variables were {h2o_dw_required_variables}.')
         try:
             ptt.partition_DWCS_H2O(str(dst_path), 
                                         NEE='NEE', GPP='GPP', Reco='Reco', CO2='wco2', 
@@ -147,11 +183,14 @@ def condition_sampling_partition(site_name, output_folderpath, variables_availab
                                     .filter(['TIMESTAMP', 'NEE', 'GPP', 'Reco'])\
                                     .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O.csv'), index=False)
         except Exception as e:
-            logging.warning(str(e))
+            logger.warning(str(e))
     
     h2o_co_dw_required_variables = ['w','co2','h2o','co']
     is_lacking_variable = sum([v not in variables_available for v in h2o_co_dw_required_variables])
+    if is_lacking_variable:
+        logger.debug(f'For partition_DWCS_CO with {h2o_co_dw_required_variables} lacking variables.')
     if not is_lacking_variable:
+        logger.debug(f'For partition_DWCS_CO no lacking variables. Necessary variables were {h2o_co_dw_required_variables}.')
         try:
             ptt.partition_DWCS_CO(str(dst_path), 
                                         NEE='NEE', GPP='GPP', Reco='Reco', ffCO2='ffCO2',
@@ -164,11 +203,14 @@ def condition_sampling_partition(site_name, output_folderpath, variables_availab
                                         .filter(['TIMESTAMP', 'NEE', 'GPP', 'Reco', 'ffCO2'])\
                                         .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O_CO.csv'), index=False)
         except Exception as e:
-            logging.warning(str(e))
+            logger.warning(str(e))
     
     co_dw_required_variables = ['w','co2','co']
     is_lacking_variable = sum([v not in variables_available for v in co_dw_required_variables])
+    if is_lacking_variable:
+        logger.debug(f'For partition_DWCS_CO with {co_dw_required_variables} lacking variables.')
     if not is_lacking_variable:
+        logger.debug(f'For partition_DWCS_CO no lacking variables. Necessary variables were {co_dw_required_variables}.')
         try:
             ptt.partition_DWCS_CO(str(dst_path), 
                                         NEE='NEE', GPP='GPP', Reco='Reco', ffCO2='ffCO2',
@@ -181,11 +223,14 @@ def condition_sampling_partition(site_name, output_folderpath, variables_availab
                                         .filter(['TIMESTAMP', 'NEE', 'GPP', 'Reco', 'ffCO2'])\
                                         .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_CO.csv'), index=False)
         except Exception as e:
-            logging.warning(str(e))
+            logger.warning(str(e))
         
     ch4_dw_required_variables = ['w','co2','ch4']
     is_lacking_variable = sum([v not in variables_available for v in ch4_dw_required_variables])
+    if is_lacking_variable:
+        logger.debug(f'For partition_DWCS_CO with {ch4_dw_required_variables} lacking variables.')
     if not is_lacking_variable:
+        logger.debug(f'For partition_DWCS_CO no lacking variables. Necessary variables were {ch4_dw_required_variables}.')
         try:
             ptt.partition_DWCS_CO(str(dst_path), 
                                         NEE='NEE', GPP='GPP', Reco='Reco', ffCO2='ffCO2',
@@ -198,7 +243,7 @@ def condition_sampling_partition(site_name, output_folderpath, variables_availab
                                         .filter(['TIMESTAMP', 'NEE', 'GPP', 'Reco', 'ffCO2'])\
                                         .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_CH4.csv'), index=False)
         except Exception as e:
-            logging.warning(str(e))
+            logger.warning(str(e))
 
 def set_cwd(workingdir=None):
     """
