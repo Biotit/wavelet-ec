@@ -334,6 +334,36 @@ def process(#ymd, raw_kwargs,
             internal_averaging=None, dt=0.05, wt_kwargs={}, 
             integration_period=None,
             method="dwt", averaging=30, meta={}, **kwargs):
+    """
+    function: process data. (1) gets data, (2) performs wavelet transform, (3) cross calculate variables using conditional_sampling, (4) averages, (5) saves. 
+        Implemented as loops to prevent RAM overflow.
+    call: process()
+    Input:
+        datetimerange (str): date time range from which the data is processed. Format: YYYYMMDDHHMM-YYYYMMDDHHMM
+        fileduration (int): time range that the input files cover in minutes (e.g. 30).
+        input_path (str): path to the folder where the input files are located.
+        acquisition_frequency (int): frequency of the data in Hz.
+        covariance (list, default: None): variables to be considered in the calculations as strings in a list. 
+            * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]
+        output_folderpath (str, default: None): path to the folder where the output is saved.
+        verbosity (int, default 1): detail of the log output.
+        overwrite (bool, default False): if files can be overriden. If True, outout files not get overriden and no calculation is performed for these data.
+        processing_time_duration (str, default "1D"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM.
+            Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
+        internal_averaging (default None): deprecated, not used anymore.
+        dt (float, default 0.05): Time step from one measurement to the next. Deprecated, not used anymore. Instead usage of dt = 1/acquisition_frequency.
+        wt_kwargs (dict, default {}): **kwargs passed to the wavelet tranformation itself. Can e.g. include wavelet specification. See wavelet_function.py for more details.
+        integration_period (int, default None): integration period of the wavelength signal in s. 
+            Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
+        method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
+        averaging (int, default 30): averaging time in minutes. At the moment deprecated, not used. 
+            Future options might include passing it to the main() function as averaging_period for the cospectra.
+        meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
+        **kwargs
+    Return:
+        fulldata (pandas.DataFrame): Containing all processed data. If integration_period is specified already integrated.
+    
+    """
     logger = logging.getLogger('wvlt.pipeline.process')
     local_args = locals()
 
@@ -558,14 +588,36 @@ def process(#ymd, raw_kwargs,
     if output_pathmodel and not fulldata.empty:
         #dst_path = os.path.join(output_folderpath, os.path.basename(
         #    output_pathmodel.format(run_time)))
-        dst_path = os.path.join(output_folderpath + str(general_config['sitename']) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
+        dst_path = os.path.join(output_folderpath + str(general_config['sitename']) + f"_CDWT_fulldata" + ".csv")
         if integration_period:
+            dst_path = os.path.join(output_folderpath + str(general_config['sitename']) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
             fulldata = integrate_cospectra(fulldata, 1/integration_period, dst_path=None)
         fulldata.to_csv(dst_path, index=False)
     return fulldata
 
 
 def main(data, varstorun, period=None, average_period='30min', output_kwargs={}, meta={}, **kwargs):
+    """
+    function: Performs wavelet transform for specified variables, cross calculate variables using conditional_sampling and averages. Can save the data in files.
+    call: main()
+    Input:
+        data (pandas.DataFrame): Data to be processed.
+        varstorun (list): variables to be considered in the calculations as strings in a list. 
+            * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]
+        period (list, default None): List with two entries. Decomposed signal only used for data['TIMESTAMP'] > period[0]) & data['TIMESTAMP'] < period[1].
+        average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values.
+            Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d.
+        output_kwargs (dict, default {}): Specify output variables. 
+            For saving the data, output_path needs to be set as string containing an element {0} to paste the data in, 
+            e.g. output_kwargs={'output_path':'../test_outputs/test_{0}.csv'}.
+            Possible further specification is overwrite (bool) specifiying if files can get overwritten.
+        meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
+        **kwargs
+    Return:
+        A new class object named var_ with class attributes data and saved. Data includes the averaged wavelet transformed, cross calculated variables.
+        saved_files contains strings with paths to where the saved files are placed.
+        If save return as test = main(), access data via test.data or test.saved.
+    """
     logger = logging.getLogger('wvlt.pipeline.main')
     logger.info('In main.')
     logger.debug(f'Input data shape: {data.shape}.')
@@ -669,8 +721,9 @@ def main(data, varstorun, period=None, average_period='30min', output_kwargs={},
         for thisdate, thisdata in growingdata.groupby(growingdata.TIMESTAMP):
             thisdate_ = thisdate.strftime('%Y%m%d%H%M')
             dst_path = output_kwargs.get('output_path').format(thisdate_)
+            overwrite = output_kwargs.get('overwrite', False)
             logger.debug(f"\t\t\t... in {dst_path}.")
-            __save_cospectra__(thisdata, dst_path, **meta[thisdate_])
+            __save_cospectra__(thisdata, dst_path, overwrite, **meta[thisdate_])
             saved_files += [dst_path]
     
     # rename saved files when done

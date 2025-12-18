@@ -119,6 +119,22 @@ def eddypro_wavelet_run(site_name, input_path, outputpath, datetimerange, acquis
 
 
 def integrate_full_spectra_into_file(site_name, output_folderpath, integration_period=60*30, newlog=False, **kwargs):
+    """
+    function: integrate cospectra from output files of process() (or main()) into a file.
+    call: integrate_full_spectra_into_file()
+    Input:
+        site_name: Site name of the data to be loaded in.
+            Nessessary to construct file names to be loaded. File names have to correspond to output file names of the function main(), i.e.
+            they need to contain the pattern '_CDWT_full_cospectra_([0-9]{12})_' and have to be saved inside the subfolder wavelet_full_cospectra of output_folderpath.
+        output_folderpath: Path of the folder where the output file gets saved.
+        integration_period (int, default None): integration period of the wavelength signal in s.
+            Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
+        newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging().
+            Useful if the function integrate_full_spectra_into_file() is called on its own, e.g. outside of eddypro_wavelet_run or with time delay after the function process().
+        **kwargs
+    Return:
+        No return.
+    """
     # CONCAT INTO SINGLE FILE
     
     # activate new logging file? Useful if function is called on its own, e.g. outside of eddypro_wavelet_run and with time delay after the process().
@@ -142,10 +158,33 @@ def integrate_full_spectra_into_file(site_name, output_folderpath, integration_p
     #    output_path=dst_path, skiprows=10)
 
 
-def condition_sampling_partition(site_name, output_folderpath, integration_period=None, variables_available=['u', 'v', 'w', 'ts', 'co2', 'h2o'], newlog=False, **kwargs):
+def condition_sampling_partition(site_name, output_folderpath, integration_period=None, variables_available=['w', 'co2', 'h2o'], newlog=False, **kwargs):
+    """
+    function: Read avaraged and integrated cospectra file, apply conditional sampling, i.e. different partitioning algorithms, and save result.
+    call: condition_sampling_partition()
+    Input: 
+        site_name (str): Site name of the data to be loaded in.
+            Nessessary to construct file names to be loaded. See variable output_folderpath for more information.
+        output_folderpath (str): Path to folder where the input and output files files are saved. 
+            Inside this folder there has to be a file with the pattern os.path.join(output_folderpath, f"{site_name}_CDWT_fulldata_integrated_*min.csv").
+            Usually produced by integrate_full_spectra_into_file() or by process().
+            integration_period (int, default None): If different files with different integration_period inside the output_folderpath, 
+            this helps to find the correct file for conditional sampling.
+            In those functions it is the integration period of the wavelength signal in s.
+            Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
+            Also relevant for the filename of saved data. It gets constructed similar to os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O.csv'
+            dependent on the used partitioning algorithm.
+        variables_available (list, default ['w', 'co2', 'h2o']): From which variables are data available. Necessary to know, which partitioning algorithms can be run.
+        newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging().
+            Useful if the function condition_sampling_partition() is called on its own, e.g. outside of eddypro_wavelet_run() or with time delay after other functions.
+        **kwargs
+    Return:
+        No return.
+    """
     # RUN PARTITIONING
     #dst_path = os.path.join(output_folderpath, str(
     #    site_name)+f'_CDWT_full_cospectra.csv')
+    # variables_available=['u', 'v', 'w', 'ts', 'co2', 'h2o']
     
     # activate new logging file? Useful if function is called on its own, e.g. outside of eddypro_wavelet_run and with time delay after the process().
     if (output_folderpath is not None) and newlog:
