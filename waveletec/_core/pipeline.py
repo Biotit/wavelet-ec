@@ -117,9 +117,8 @@ def integrate_cospectra_from_file(root, f0, pattern='', dst_path=None):
     return integrate_cospectra(data, f0, dst_path=dst_path)
 
 
-def decompose_variables(data, variables=['w', 'co2'],
-                     nan_tolerance=.3,
-                     verbosity=1, identifier='0000', 
+def decompose_variables(data, variables=['w', 'co2'], method='dwt', 
+                     nan_tolerance=.3, identifier='0000', 
                      **kwargs):
     """    Calculate data decomposed with wavelet transform
     """
@@ -138,7 +137,7 @@ def decompose_variables(data, variables=['w', 'co2'],
                     data[var], nan_tolerance=nan_tolerance, identifier=identifier)
                 logger.debug(f"signal is ready: {ready_signal.signal.shape}")
                 wt_signal = universal_wt(
-                    signal=ready_signal.signal, **kwargs, inv=True)
+                    signal=ready_signal.signal, method=method, **kwargs, inv=True)
                 logger.debug(
                     f"wt_signal is ready: {wt_signal.wave.shape}, {wt_signal.sj}")
                 # φ[var], sj
@@ -155,8 +154,22 @@ def decompose_variables(data, variables=['w', 'co2'],
     return type('var_', (object,), φ)
 
 
-def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt', nan_tolerance=.3, verbosity=1, **kwargs):
-    """    Calculate data decomposed with wavelet transform
+def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt', nan_tolerance=.3, memory_eff=True, **kwargs):
+    """
+    function: Calculate data decomposed with wavelet transform
+    call: decompose_data()
+    
+    Input:
+        * data (pandas.DataFrame): The data to be decomposed. Column TIMESTAMP necessary and variables as column names.
+        * variables (list, default ['w', 'co2']): variables to decompose. Need to correspond to column names in data.
+        * dt (float, default 0.05): Time step between the observations/measurements. Necessary to calculate frequency from wavelet scales, and fs, f1.
+        * method (str, default 'dwt'): Wavelet decomposition method. Possible methods are 'dwt', 'cwt', 'fcwt'.
+        * nan_tolerance (float, default .3): Passed to decompose_variables() and then prepare_signal(). Proportion or absolute value of NAN values allowed within the data. Passed to prepare_signal(). If too much NAN, warning gets called. Otherwise NAN get linear interpolated.
+        * memory_eff (bool, default True): if False, fast but memory-heavy algorithm is used to combine all decomposed data. Otherwise memory-light but slow algorithm is used.
+        **kwargs
+    
+    Return:
+        Pandas DataFrame with columns: TIMESTAMP, natural_frequency, the decomposed variables, and their quality control (_qc).
     """
     logger = logging.getLogger('wvlt.pipeline.decompose_data')
     assert method in [
@@ -166,8 +179,14 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt', nan_tole
     # run by couple of variables (e.g.: co2*w -> mean(co2'w'))
     info_t_startvarloop = time.time()
     
+    kwargs['fs'] = kwargs.get('fs', 1/dt) # if fs specified in wt_kwargs in process() its used here, otherwise taking 1/dt as fs.
+    logger.debug(f'fs set to {kwargs['fs']}.')
+    kwargs['f1'] = kwargs.get('f1', (1/2)*(1/dt)) # f1: lowest scale (2x sampling rate), if acquisition_frequency = 20 --> we can highest capture the 10 Hz frequencies because of sampling theorem.
+    logger.debug(f'f1 set to {kwargs['f1']}')
+    
+    
     # run wavelet transform
-    φ = decompose_variables(data, variables=variables,
+    φ = decompose_variables(data, variables=variables, method=method,
                               nan_tolerance=nan_tolerance, **kwargs)
     # sj = φ.pop('sj', None)
     # for v in variables:
@@ -212,14 +231,47 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt', nan_tole
     
     __temp__.set_index('TIMESTAMP', inplace=True)
     # logger.debug(f'\t\tpd.MultiIndex.from_tuples: {[tuple(c.split("_")) for c in __temp__.columns]}.')
+    
+    #logger.debug(f'Calculating natural_frequency from scales for {__temp__.head()}.')
     __temp__.columns = pd.MultiIndex.from_tuples([tuple(c.rsplit('_', 1)) for c in __temp__.columns])
-    __temp__ = __temp__.stack(1).reset_index(1).rename(columns={"level_1": "natural_frequency"}).reset_index(drop=False)
+    #logger.debug(f'Calculating natural_frequency from scales for MultiIndex {__temp__.head()}.')
+    
+    if memory_eff==False: # old processing: memory heavy, but fast
+        t0 = time.perf_counter()
+        __temp_l__ = __temp__.stack(1).reset_index(1).rename(columns={"level_1": "natural_frequency"}).reset_index(drop=False) # very memory heavy. Try to replace
+        elapsed = time.perf_counter() - t0
+        logger.debug(f"Fast, but memory heavy processing took {elapsed:.3f} seconds")
+    else: 
+    # new processing: memory efficient but slow, enables using longer processing_time_durations or lower f0 --> more levels for dwt --> far more data loaded in, especially using necessary buffer to avoid edge effects or coi.
+        t0 = time.perf_counter()
+        # Initialize empty DataFrame, gets filled during loop step by step for each variable
+        __temp_l__ = pd.DataFrame(index=pd.MultiIndex.from_product([__temp__.index, __temp__.columns.get_level_values(1).unique()], names=["TIMESTAMP", "natural_frequency"]))
+        for var in __temp__.columns.get_level_values(0).unique():
+            logger.debug(f'Looping over {var}.')
+            df_var = __temp__[var]
+            __temp__.drop(columns=var, level=0, inplace=True) # delete directly after using it to save RAM space
+            s = df_var.stack()
+            del df_var # delete directly after using it to save RAM space
+            s.index = s.index.set_names(["TIMESTAMP", "natural_frequency"])
+            __temp_l__[var] = s
+            del s
+        logger.debug(f'Looping worked, column names are {__temp_l__.columns}, now resetting index.')
+        __temp_l__.reset_index(inplace=True)
+        elapsed = time.perf_counter() - t0
+        logger.debug(f"Slow, but memory efficient processing took {elapsed:.3f} seconds")
+    
+    # Making sure the new method produces the same output as the old:
+    #__temp_l__.to_csv("../test_outputs/Newmethod.csv")
+    #__temp2__.to_csv('../test_outputs/Oldmethod.csv')
+    # --> the data is the same but ordered differently.
+    # --> when the output of the process function is compared (already averaged), the output is exactly the same between old and new method.
 
     #pattern = re.compile(r"^(?P<variable>.+?)_?(?P<natural_frequency>(?<=_)\d+)?$")
     #__temp__ = __temp__.melt(['TIMESTAMP'] + φ.keys())
     #__temp__ = pd.concat([__temp__.pop('variable').str.extract(pattern, expand=True), __temp__], axis=1)
-    __temp__['natural_frequency'] = __temp__['natural_frequency'].apply(lambda j: 1/hc24.j2sj(j, 1/dt) if j else np.nan)
-    return __temp__
+    __temp_l__['natural_frequency'] = __temp_l__['natural_frequency'].apply(lambda j: 1/hc24.j2sj(j, 1/dt) if j else np.nan)
+    # logger.debug(f'Calculating natural_frequency finished. Returning DataFrame {__temp_l__.head()}')
+    return __temp_l__
 
 
 def _calculate_product_from_formula_(data, formula='w*co2|w*h2o'):
@@ -303,7 +355,7 @@ def __save_cospectra__(data, dst_path, overwrite=False, **meta):
         header += f"y-axis -> wavelet_reconstructed\n"
         header += f"mother_wavelet -> {meta.get('method', '')}\n"
         header += f"acquisition_frequency [Hz] = {1/meta.get('dt', np.nan)}\n"
-        header += f"averaging_interval [Min] = {meta.get('averaging', '')}\n"
+        header += f"averaging_interval = {meta.get('averaging', '')}\n"
         hc24.mkdirs(dst_path)
         with open(dst_path, 'w+') as part: part.write(header)
         # legitimate_to_write = 1
@@ -327,39 +379,34 @@ def __save_cospectra__(data, dst_path, overwrite=False, **meta):
     # return saved_files
     return
 
-def process(#ymd, raw_kwargs, 
+def process(
             datetimerange, fileduration, input_path, acquisition_frequency,
             covariance=None, output_folderpath=None, verbosity=1,
-            overwrite=False, processing_time_duration="1D", 
-            internal_averaging=None, dt=0.05, wt_kwargs={}, 
+            overwrite=False, processing_time_duration="1D",
             integration_period=None,
-            method="dwt", averaging=30, meta={}, **kwargs):
+            method="dwt", average_period="30min", wt_kwargs={}, meta={}, **kwargs):
     """
-    function: process data. (1) gets data, (2) performs wavelet transform, (3) cross calculate variables using conditional_sampling, (4) averages, (5) saves. 
-        Implemented as loops to prevent RAM overflow.
+    function: process data. (1) gets data, (2) performs wavelet transform, (3) cross calculate variables using conditional_sampling, (4) averages, (5) saves. Implemented as loops to prevent RAM overflow.
+    
     call: process()
+    
     Input:
-        datetimerange (str): date time range from which the data is processed. Format: YYYYMMDDHHMM-YYYYMMDDHHMM
-        fileduration (int): time range that the input files cover in minutes (e.g. 30).
-        input_path (str): path to the folder where the input files are located.
-        acquisition_frequency (int): frequency of the data in Hz.
-        covariance (list, default: None): variables to be considered in the calculations as strings in a list. 
-            * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]
-        output_folderpath (str, default: None): path to the folder where the output is saved.
-        verbosity (int, default 1): detail of the log output.
-        overwrite (bool, default False): if files can be overriden. If True, outout files not get overriden and no calculation is performed for these data.
-        processing_time_duration (str, default "1D"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM.
-            Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
-        internal_averaging (default None): deprecated, not used anymore.
-        dt (float, default 0.05): Time step from one measurement to the next. Deprecated, not used anymore. Instead usage of dt = 1/acquisition_frequency.
-        wt_kwargs (dict, default {}): **kwargs passed to the wavelet tranformation itself. Can e.g. include wavelet specification. See wavelet_function.py for more details.
-        integration_period (int, default None): integration period of the wavelength signal in s. 
-            Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
-        method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
-        averaging (int, default 30): averaging time in minutes. At the moment deprecated, not used. 
-            Future options might include passing it to the main() function as averaging_period for the cospectra.
-        meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
+        * datetimerange (str): date time range from which the data is processed. Format: YYYYMMDDHHMM-YYYYMMDDHHMM
+        * fileduration (int): time range that the input files cover in minutes (e.g. 30).
+        * input_path (str): path to the folder where the input files are located.
+        * acquisition_frequency (int): frequency of the data in Hz. Used as dt = 1/acquisition_frequency. Used to calculate the sampling frequency fs for wavelet decomposition inside of decompose_data() and then passed to universal_wt().
+        * covariance (list, default: None): variables to be considered in the calculations as strings in a list. * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]
+        * output_folderpath (str, default: None): path to the folder where the output is saved.
+        * verbosity (int, default 1): detail of the log output.
+        * overwrite (bool, default False): if files can be overriden. If True, output files not get overriden and no calculation is performed for these data.
+        * processing_time_duration (str, default "1D"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM. Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
+        * integration_period (int, default None): integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
+        * method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
+        * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d. Passed to the main function.
+        * wt_kwargs (dict, default {}): **kwargs passed to the wavelet tranformation itself. Can e.g. include wavelet specification. See wavelet_function.py for more details. Important setting include f0, which is the lowest frequency for wavelet decomposition. Because adding buffer is necessary to prevent edge effects, a lower f0 drastically increases the amount of data loaded in and the memory usage.
+        * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs
+        
     Return:
         fulldata (pandas.DataFrame): Containing all processed data. If integration_period is specified already integrated.
     
@@ -435,14 +482,10 @@ def process(#ymd, raw_kwargs,
     if 'gas4_name' in kwargs.keys():
         load_kwargs['fmt'].update({kwargs.pop('gas4_name'): '4th gas'})
 
-    # raw_kwargs = {'path': input_path, 'fkwargs': {
-    #     'dt': 1/acquisition_frequency}}
-    # raw_kwargs.update({k: v for k, v in kwargs.items() if k in ['fmt']})
-
     transform_kwargs = {
         'dt': 1/acquisition_frequency,
         'method': method,
-        # 'averaging': averaging,
+        'average_period': average_period,
         'varstorun': covariance or hc24.available_combinations(hc24.DEFAULT_COVARIANCE),
         **kwargs.get("transform_kwargs", {}),
         **wt_kwargs
@@ -471,13 +514,6 @@ def process(#ymd, raw_kwargs,
     output_pathmodel = ""
     curoutpath_inprog = ""
 
-    # method = kwargs.get('method', 'dwt')
-    # sitename = kwargs.get('sitename', '00000')
-
-    # if covariance is None:
-    #     # TODO: get variables available from eddypro
-    #     covariance = hc24.available_combinations(hc24.DEFAULT_COVARIANCE)
-
     # kwargs.update({'covariance': covariance,
     #           'processduration': processduration, })
     
@@ -503,11 +539,6 @@ def process(#ymd, raw_kwargs,
     
     ymd = [datetimerange.split(
         '-')[0], datetimerange.split('-')[1], f'{fileduration}min']
-    
-    # if isinstance(averaging, (list, tuple)):
-    #     averaging = averaging[-1]
-    # if internal_averaging is None:
-    #     internal_averaging = averaging
     
     fulldata = pd.DataFrame()
     info_t_start = time.time()
@@ -601,22 +632,15 @@ def main(data, varstorun, period=None, average_period='30min', output_kwargs={},
     function: Performs wavelet transform for specified variables, cross calculate variables using conditional_sampling and averages. Can save the data in files.
     call: main()
     Input:
-        data (pandas.DataFrame): Data to be processed.
-        varstorun (list): variables to be considered in the calculations as strings in a list. 
-            * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]
-        period (list, default None): List with two entries. Decomposed signal only used for data['TIMESTAMP'] > period[0]) & data['TIMESTAMP'] < period[1].
-        average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values.
-            Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d.
-        output_kwargs (dict, default {}): Specify output variables. 
-            For saving the data, output_path needs to be set as string containing an element {0} to paste the data in, 
-            e.g. output_kwargs={'output_path':'../test_outputs/test_{0}.csv'}.
-            Possible further specification is overwrite (bool) specifiying if files can get overwritten.
-        meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
+        * data (pandas.DataFrame): Data to be processed.
+        * varstorun (list): variables to be considered in the calculations as strings in a list. * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]
+        * period (list, default None): List with two entries. Decomposed signal only used for data['TIMESTAMP'] > period[0]) & data['TIMESTAMP'] < period[1].
+        * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d.
+        * output_kwargs (dict, default {}): Specify output variables. For saving the data, output_path needs to be set as string containing an element {0} to paste the data in, e.g. output_kwargs={'output_path':'../test_outputs/test_{0}.csv'}. Possible further specification is overwrite (bool) specifiying if files can get overwritten.
+        * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs
     Return:
-        A new class object named var_ with class attributes data and saved. Data includes the averaged wavelet transformed, cross calculated variables.
-        saved_files contains strings with paths to where the saved files are placed.
-        If save return as test = main(), access data via test.data or test.saved.
+        A new class object named var_ with class attributes data and saved. Data includes the averaged wavelet transformed, cross calculated variables. saved_files contains strings with paths to where the saved files are placed. If save return as test = main(), access data via test.data or test.saved.
     """
     logger = logging.getLogger('wvlt.pipeline.main')
     logger.info('In main.')
@@ -634,7 +658,7 @@ def main(data, varstorun, period=None, average_period='30min', output_kwargs={},
     # decompose all required variables
     wvvar = decompose_data(data, vars_unique,
                            nan_tolerance=.3,
-                           verbosity=1, identifier='0000',
+                           identifier='0000',
                            **kwargs)
     meta.update({'averaging': average_period,
                  'method': f"{kwargs.get('method', '')} ~{kwargs.get('mother_wavelet', '')}",
@@ -664,19 +688,19 @@ def main(data, varstorun, period=None, average_period='30min', output_kwargs={},
           )
          for i, f in enumerate(uniquecovs)], axis=1)
     
-    logger.debug(f'Calclate covariance is over.')
+    logger.debug(f'Calculate covariance is over.')
 
     growingdata = pd.concat([wvvar, wvout], axis=1)
     logger.debug(f'Growing data shape {growingdata.shape}.')
 
     # calculate conditional sampling    
-    logger.debug(f'Calclate _calculate_conditional_sampling_from_formula_ is over. 0')
+    logger.debug(f'Calculate _calculate_conditional_sampling_from_formula_ is over. 0')
     wvcsp = pd.concat(
         # [wvvar[['TIMESTAMP', 'natural_frequency']]] +
         [_calculate_conditional_sampling_from_formula_(growingdata, f)
          for f in varstorun], axis=1)
          
-    logger.debug(f'Calclate _calculate_conditional_sampling_from_formula_ is over, with data: {wvcsp.head()}.')
+    logger.debug(f'Calculate _calculate_conditional_sampling_from_formula_ is over, with data: {wvcsp.head()}.')
 
     # despike
     # denoise

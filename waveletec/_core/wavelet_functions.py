@@ -270,6 +270,20 @@ def __idwt__(*args, N, wavelet='db6', mode='symmetric'):
 
 
 def prepare_signal(signal, nan_tolerance=0.3, identifier='0000'):
+    """ 
+    function: Prepares signal for wavelet decomposition, i.e. fills gaps in the data by linear interpolation.
+    call: prepare_signal()
+    Input:
+        * signal (pandas.Series, list, numpy.array): Signal of data to be prepared.
+        * nan_tolerance (float, default 0.3): Proportion or absolute value of NAN values allowed within the data. Passed to prepare_signal(). If too much NAN, warning gets called. Otherwise NAN get linear interpolated.
+        * identifier (str, default '0000'): Only used in printing warning logger output if too many NAN.
+    Return:
+         A new class object named var_ with class attributes signal, signan, N, and Nnan. If less NAN than nan_tolerance, 
+         * signal (numpy.array): gapfilled input signal
+         * signan (numpy.array): indicator array if nan 
+         * N: len(signal)
+         * Nnan: number of NAN
+    """
     signal = np.array(signal)
     signan = np.isnan(signal)
     N = len(signal)
@@ -382,7 +396,7 @@ def universal_wt(signal, method='dwt', fs=20, f0=1/(3*60*60), f1=10, fn=180,
         # wave = waves[0][0]
 
     coi = inside_cone_of_influence(sj=sj, dt=1/fs,
-                                   n0=len(signal), 
+                                   n0=len(signal)
                                    #wavelet=kwargs.get('mother_wavelet', '')
                                    )
     return type('var_', (object,), {'wave': waves, 'sj': sj, 'coi': coi, 'method': method, 'fs': fs, 'f0': f0, 'f1': f1, 'fn': fn})
