@@ -142,7 +142,12 @@ def decompose_variables(data, variables=['w', 'co2'], method='dwt',
                     f"wt_signal is ready: {wt_signal.wave.shape}, {wt_signal.sj}")
                 # φ[var], sj
                 φ[var] = wt_signal.wave
-                φ[f'{var}_qc'] = np.where(ready_signal.signan, 0, wt_signal.coi)
+                # COI
+                coi = wt_signal.coi
+                if coi is None: # coi is None for dwt
+                    coi = np.ones_like(φ[var]) # produce same shape array as if there would be a coi, all with values 1. --> for dwt for quality control only nan amount.
+                φ[f'{var}_qc'] = np.where(ready_signal.signan, 0, coi)
+                #φ[f'{var}_qc'] = np.where(ready_signal.signan, 0, wt_signal.coi)
                 φ['info_names'] += [var, f'{var}_qc']
                 logger.debug(f"wt_signal is done.")
         φ.update({'sj': wt_signal.sj})
@@ -694,7 +699,7 @@ def main(data, varstorun, period=None, average_period='30min', output_kwargs={},
     logger.debug(f'Growing data shape {growingdata.shape}.')
 
     # calculate conditional sampling    
-    logger.debug(f'Calculate _calculate_conditional_sampling_from_formula_ is over. 0')
+    logger.debug(f'Starting _calculate_conditional_sampling_from_formula_.')
     wvcsp = pd.concat(
         # [wvvar[['TIMESTAMP', 'natural_frequency']]] +
         [_calculate_conditional_sampling_from_formula_(growingdata, f)

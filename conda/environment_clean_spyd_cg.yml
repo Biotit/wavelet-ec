@@ -25,7 +25,7 @@ dependencies:
   # Spyder support
   - spyder-kernels=3.1
 
-  # Scientific stack (formerly in pip section)
+  # Scientific stack
   - numpy
   - scipy
   - pandas
@@ -44,7 +44,7 @@ dependencies:
   - tzdata
   - joblib
 
-  # Base system libs (minimal + solver-friendly)
+  # Base system libs
   - bzip2
   - ca-certificates
   - openssl

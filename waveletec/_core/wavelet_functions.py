@@ -5,15 +5,6 @@ This script is a key part of the following publications:
     Wavelet-Based Eddy Covariance: A New Method for Partitioning Respiration and Photosynthesis. 
     Available at SSRN: https://ssrn.com/abstract=4642939 or http://dx.doi.org/10.2139/ssrn.4642939
 
-The main function is:  
-- run_wt
-    function: (1) gets data, (2) performs wavelet transform, (3) cross calculate variables, (4) averages by 30 minutes, (5) saves 
-    call: run_wt()
-    Input:
-        a: 
-    Return:
-        b: 
-
 - conditional_sampling
     function: split an array (n dimensions) into 4 arrays based on signal (+ or -) of itself and 2nd array 
     call: conditional_sampling()
@@ -395,9 +386,13 @@ def universal_wt(signal, method='dwt', fs=20, f0=1/(3*60*60), f1=10, fn=180,
             waves = waves[0].real
         # wave = waves[0][0]
 
-    coi = inside_cone_of_influence(sj=sj, dt=1/fs,
-                                   n0=len(signal)
-                                   #wavelet=kwargs.get('mother_wavelet', '')
-                                   )
+    # COI. Only if cwt, not for dwt.
+    if method=='dwt':
+        coi = None
+    else:
+        coi = inside_cone_of_influence(sj=sj, dt=1/fs,
+                                       n0=len(signal),
+                                       wavelet=kwargs.get('wavelet', None)
+                                       )
     return type('var_', (object,), {'wave': waves, 'sj': sj, 'coi': coi, 'method': method, 'fs': fs, 'f0': f0, 'f1': f1, 'fn': fn})
     # return {'wave': waves, 'sj': sj, 'coi': coi, 'method': method, 'fs': fs, 'f0': f0, 'f1': f1, 'fn': fn}
