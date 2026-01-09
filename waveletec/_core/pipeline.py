@@ -316,7 +316,20 @@ def _calculate_product_from_formula_(data, formula='w*co2|w*h2o'):
     return pd.DataFrame(φs)
 
 
-def _calculate_conditional_sampling_from_formula_(data, formula='w*co2|w*h2o'):
+def _calculate_conditional_sampling_from_formula_(data, formula='w*co2|w*h2o', cond_samp_both=False):
+    """
+    function: calculate from formula what arguments passed to conditional_sampling().
+    
+    call: _calculate_conditional_sampling_from_formula_()
+    
+    Input:
+        * data (pandas.DataFrame): Data to be conditionally sampled. Need to contain columns fitting to the variables in the formula. If the formula contains 'w*co2|w*h2o', using the function formula_to_vars() it gets to the names ['wh2o', 'wco2']. Those names need to be in the column names of the dataframe.
+        * formula (str, default 'w*co2|w*h2o'): Which variables are how to be conditionally sampled. "w*co2|w*h2o" means: conditionally sample w*co2 depending on w*co2 and w*h2o.
+        * cond_samp_both (bool, default True): If True both parts of the formula are conditionally sampled. If False, only the leading part of the formula is sampled. E.g. if False in case of 'w*co2|w*h2o', we get the output columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, stating wco2 being conditionally sampled e.g. for wco2+wh2o+ when wco2 is positiv AND wh2o is positive. If True, we get the output columns wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco2-wh2o-,wh2o+wco2+,wh2o+wco2-,wh2o-wco2+,wh2o-wco2-, hence, we get both, wco2 and wh2o conditionally sampled.
+    
+    Return:
+        pd.DataFrame(φc) (pandas.DataFrame): Dataframe containing the conditionally sampled data.
+    """
     logger = logging.getLogger('wvlt.pipeline._calculate_conditional_sampling_from_formula_')
 
     logger.debug(f"\t\tformula: {formula}.")
@@ -328,8 +341,23 @@ def _calculate_conditional_sampling_from_formula_(data, formula='w*co2|w*h2o'):
 
     logger.debug(f"\t\tnames: {names} ({data.columns.to_list()}).")
 
-    φc = conditional_sampling(
-        np.array(data[names[0]]), *[np.array(data[n]) for n in names], names=names, label={1: "+", -1: "-"}) if names else {}
+    if cond_samp_both==True:
+        logger.debug(f"Conditional sampling for all parts of formula: {names}.")
+        φc = {}
+        for i, name in enumerate(names):
+            logger.debug(f"Run conditional sampling for {name}.")
+            names_i = names.copy()
+            # shift the name that is being conditionally sampled to the front
+            # that the column names created by conditional_sampling() fit.
+            names_i.insert(0, names_i.pop(i))
+            φc_a = conditional_sampling(
+                np.array(data[name]), *[np.array(data[n]) for n in names_i], names=names_i, label={1: "+", -1: "-"}) if names_i else {}
+            φc = {**φc, **φc_a}
+            #logger.debug(f"φc is within the loop is {φc}")
+    else:
+        logger.debug(f"Conditional sampling only for the first part of formula: {names[0]}.")
+        φc = conditional_sampling(
+            np.array(data[names[0]]), *[np.array(data[n]) for n in names], names=names, label={1: "+", -1: "-"}) if names else {}
 
     # data = pd.concat([data, pd.DataFrame(φs)], axis=1)
     return pd.DataFrame(φc)
@@ -386,7 +414,7 @@ def __save_cospectra__(data, dst_path, overwrite=False, **meta):
 
 def process(
             datetimerange, fileduration, input_path, acquisition_frequency,
-            covariance=None, output_folderpath=None, verbosity=1,
+            covariance=None, cond_samp_both=False, output_folderpath=None, verbosity=1,
             overwrite=False, processing_time_duration="1D",
             integration_period=None,
             method="dwt", average_period="30min", wt_kwargs={}, meta={}, **kwargs):
@@ -400,7 +428,8 @@ def process(
         * fileduration (int): time range that the input files cover in minutes (e.g. 30).
         * input_path (str): path to the folder where the input files are located.
         * acquisition_frequency (int): frequency of the data in Hz. Used as dt = 1/acquisition_frequency. Used to calculate the sampling frequency fs for wavelet decomposition inside of decompose_data() and then passed to universal_wt().
-        * covariance (list, default: None): variables to be considered in the calculations as strings in a list. * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]
+        * covariance (list, default: None): variables to be considered in the calculations as strings in a list. * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]. In this example, "w*co2|w*h2o" means: conditionally sample w*co2 depending on w*co2 and w*h2o. This produces the columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, which mean e.g. in the case wco2+wh2o+ that wco2 is sampled when wco2 is positive AND wh2o is positive.
+        * cond_samp_both (bool, default True): If True both parts of the formula are conditionally sampled. If False, only the leading part of the formula is sampled. E.g. if False in case of 'w*co2|w*h2o', we get the output columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, stating wco2 being conditionally sampled e.g. for wco2+wh2o+ when wco2 is positiv AND wh2o is positive. If True, we get the output columns wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco2-wh2o-,wh2o+wco2+,wh2o+wco2-,wh2o-wco2+,wh2o-wco2-, hence, we get both, wco2 and wh2o conditionally sampled.
         * output_folderpath (str, default: None): path to the folder where the output is saved.
         * verbosity (int, default 1): detail of the log output.
         * overwrite (bool, default False): if files can be overriden. If True, output files not get overriden and no calculation is performed for these data.
@@ -602,7 +631,7 @@ def process(
                 f_transform_kwargs['varstorun'] = [f]
                 logger.debug(f"Available data columns: {data.columns.tolist()}")
                 logger.debug(f"Processing formula: {f}, varstorun passed to main(): {transform_kwargs['varstorun']}")
-                output = main(data, period=[min(yl), max(yl)], 
+                output = main(data, period=[min(yl), max(yl)], cond_samp_both=cond_samp_both,
                               meta=meta,
                               output_kwargs=output_kwargs, **f_transform_kwargs)
                 saved_files.append(output.saved)
@@ -632,7 +661,7 @@ def process(
     return fulldata
 
 
-def main(data, varstorun, period=None, average_period='30min', output_kwargs={}, meta={}, **kwargs):
+def main(data, varstorun, period=None, average_period='30min', cond_samp_both=False, output_kwargs={}, meta={}, **kwargs):
     """
     function: Performs wavelet transform for specified variables, cross calculate variables using conditional_sampling and averages. Can save the data in files.
     call: main()
@@ -702,7 +731,7 @@ def main(data, varstorun, period=None, average_period='30min', output_kwargs={},
     logger.debug(f'Starting _calculate_conditional_sampling_from_formula_.')
     wvcsp = pd.concat(
         # [wvvar[['TIMESTAMP', 'natural_frequency']]] +
-        [_calculate_conditional_sampling_from_formula_(growingdata, f)
+        [_calculate_conditional_sampling_from_formula_(growingdata, f, cond_samp_both)
          for f in varstorun], axis=1)
          
     logger.debug(f'Calculate _calculate_conditional_sampling_from_formula_ is over, with data: {wvcsp.head()}.')
