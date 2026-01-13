@@ -6,29 +6,9 @@ This script is a key part of the following publications:
     Available at SSRN: https://ssrn.com/abstract=4642939 or http://dx.doi.org/10.2139/ssrn.4642939
 
 The main function is:  
-- run_wt
-    function: (1) gets data, (2) performs wavelet transform, (3) cross calculate variables, (4) averages by 30 minutes, (5) saves 
-    call: run_wt()
-    Input:
-        a: 
-    Return:
-        b: 
+- process
+- main
 
-- conditional_sampling
-    function: split an array (n dimensions) into 4 arrays based on signal (+ or -) of itself and 2nd array 
-    call: conditional_sampling()
-    Input:
-        args: arrays to be used as filter 
-    Return:
-        b: 
-
-- universal_wt
-    function: call any wavelet transform
-    call: universal_wt()
-    Input:
-        a: 
-    Return:
-        b: 
 """
 
 # built-in modules
@@ -64,7 +44,9 @@ except ImportError as e:
 from . import commons as hc24
 from .read_data import loaddatawithbuffer
 from .wavelet_functions import universal_wt, formula_to_vars, prepare_signal, bufferforfrequency_dwt, bufferforfrequency
-from ..partitioning.coimbra_et_al_2025 import conditional_sampling
+#from ..partitioning.coimbra_et_al_2025 import conditional_sampling
+from ..partitioning import coimbra_et_al_2025 as ptt
+from ..partitioning import schoendorf as pttET
 
 logger = logging.getLogger('wvlt.pipeline')
 
@@ -159,7 +141,8 @@ def decompose_variables(data, variables=['w', 'co2'], method='dwt',
     return type('var_', (object,), φ)
 
 
-def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt', nan_tolerance=.3, memory_eff=True, **kwargs):
+def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt', 
+                   nan_tolerance=.3, memory_eff=True, **kwargs):
     """
     function: Calculate data decomposed with wavelet transform
     call: decompose_data()
@@ -350,13 +333,13 @@ def _calculate_conditional_sampling_from_formula_(data, formula='w*co2|w*h2o', c
             # shift the name that is being conditionally sampled to the front
             # that the column names created by conditional_sampling() fit.
             names_i.insert(0, names_i.pop(i))
-            φc_a = conditional_sampling(
+            φc_a = ptt.conditional_sampling(
                 np.array(data[name]), *[np.array(data[n]) for n in names_i], names=names_i, label={1: "+", -1: "-"}) if names_i else {}
             φc = {**φc, **φc_a}
             #logger.debug(f"φc is within the loop is {φc}")
     else:
         logger.debug(f"Conditional sampling only for the first part of formula: {names[0]}.")
-        φc = conditional_sampling(
+        φc = ptt.conditional_sampling(
             np.array(data[names[0]]), *[np.array(data[n]) for n in names], names=names, label={1: "+", -1: "-"}) if names else {}
 
     # data = pd.concat([data, pd.DataFrame(φs)], axis=1)
@@ -412,12 +395,92 @@ def __save_cospectra__(data, dst_path, overwrite=False, **meta):
     # return saved_files
     return
 
-def process(
-            datetimerange, fileduration, input_path, acquisition_frequency,
-            covariance=None, cond_samp_both=False, output_folderpath=None, verbosity=1,
+def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True, 
+    integration_period=None, 
+    variables_available=['h2o', 'wh2o+wco2-', 'wh2o-wco2-', 'wh2o-wco2+', 'wh2o+wco2+', 'co2', 'wco2-wh2o+', 'wco2-wh2o-'], 
+        newlog=False):
+    """
+    function: Read avaraged and integrated cospectra file, with conditionally sampled fluxes, apply conditional sampling for NEE and ET.
+    Input: 
+        * site_name (str): Site name of the data to be loaded in. Nessessary to construct file names to be loaded. See variable output_folderpath for more information.
+        * output_folderpath (str): Path to folder where the input and output files files are saved. Inside this folder there has to be a file with the pattern os.path.join(output_folderpath, f"{site_name}_CDWT_fulldata_integrated_*min.csv"). Usually produced by integrate_full_spectra_into_file() or by process().
+        * NEE (bool, default True): If True, NEE is partitioned.
+        * ET (bool, default True): If True, ET is partitioned.
+        * integration_period (int, default None): If different files with different integration_period inside the output_folderpath, this helps to find the correct file for conditional sampling. In those functions it is the integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). Also relevant for the filename of saved data. It gets constructed similar to os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O.csv' dependent on the used partitioning algorithm.
+        * variables_available (list, default ['h2o', 'wh2o+wco2-', 'wh2o-wco2-', 'wh2o-wco2+', 'wh2o+wco2+', 'co2', 'wco2-wh2o+', 'wco2-wh2o-']): From which variables are data available. Necessary to test, if partitioning algorithms can be run.
+        * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function condition_sampling_partition() is called on its own, e.g. outside of eddypro_wavelet_run() or with time delay after other functions.
+    Return:
+        dat (Pandas.DataFrame): Dataframe with the partitioned fluxes.
+    """
+    # function to load output file from integrate_full_spectra_into_file() or process()
+    # and, partitiones the data and save its results as well in a new file.
+    # inside process file or inside handler?
+    logger = logging.getLogger('wvlt.pipeline.cs_partition_NEE_ET')
+    # activate new logging file? Useful if function is called on its own, 
+    # e.g. outside of eddypro_wavelet_run and with time delay after the process().
+    if (output_folderpath is not None) and newlog:
+        hc24.start_logging(output_folderpath)
+        
+    # to be able to have different integration_period = 1/f0, hence different high pass filters in the folder
+    # search for the pattern with variable minutes
+    if not integration_period:
+        pattern = os.path.join(output_folderpath, f"{site_name}_CDWT_fulldata_integrated_*min.csv")
+        matches = glob.glob(pattern)
+        if not matches:
+            raise FileNotFoundError(f"No file found matching {pattern}")
+        if len(matches) > 1:
+            logger.warning(f"Multiple files of integrated cospectra found: {matches}, taking the first one for partitioning! Set integration_period if want to use another one.")
+        dst_path = matches[0]
+        logger.info(f'Taking the file {dst_path} for partitioning.')
+    else:
+        dst_path = os.path.join(output_folderpath + str(site_name) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
+        logger.debug(f"Specified integration_period={integration_period}. Hence taking the file {dst_path}")
+    
+    list_dat = []
+    
+    # Partitioning ET
+    if ET:
+        logger.debug("Trying to partition ET")
+        ETpartition_DWCS_required_variables = ['h2o', 'wh2o+wco2-', 'wh2o-wco2-', 'wh2o-wco2+', 'wh2o+wco2+']
+        is_lacking_variable = sum([v not in variables_available for v in ETpartition_DWCS_required_variables])
+        if is_lacking_variable:
+            logger.warning(f'For ETpartition_DWCS with {ETpartition_DWCS_required_variables} lacking variables.')
+        if not is_lacking_variable:
+            logger.debug(f'For ETpartition_DWCS no lacking variables. Necessary variables were {ETpartition_DWCS_required_variables}.')
+            dat_part = pttET.ETpartition_DWCS(str(dst_path))\
+                        .filter(['TIMESTAMP', 'ET', 'T', 'E', 'Dew'])
+            list_dat.append(dat_part)
+    
+    # Partitioning NEE
+    if NEE:
+        logger.debug("Starting to partition NEE")
+        partition_DWCS_H2O_required_variables = ['co2', 'wco2-wh2o+', 'wco2-wh2o-']
+        is_lacking_variable = sum([v not in variables_available for v in partition_DWCS_H2O_required_variables])
+        if is_lacking_variable:
+           logger.warning(f'For partition_DWCS_H2O with {partition_DWCS_H2O_required_variables} lacking variables.')
+        if not is_lacking_variable:
+            logger.debug(f'For partition_DWCS_H2O no lacking variables. Necessary variables were {partition_DWCS_H2O_required_variables}.')
+            dat_part = ptt.partition_DWCS_H2O(str(dst_path), 
+                                        NEE='NEE', GPP='GPP', Reco='Reco', CO2='wco2', 
+                                        CO2neg_H2Opos='wco2-wh2o+', 
+                                        CO2neg_H2Oneg='wco2-wh2o-', NIGHT=None)\
+                                    .filter(['TIMESTAMP', 'NEE', 'GPP', 'Reco'])
+            list_dat.append(dat_part)
+            
+    if list_dat:
+        dat = list_dat[0]
+    for df in list_dat[1:]:
+        dat = dat.merge(df, on="TIMESTAMP", how="outer")
+    dat.to_file(os.path.join(output_folderpath, str(site_name)+'_CDWT_partitioning_NEE_ET.csv'), index=False)
+    
+    return dat
+
+def process(datetimerange, fileduration, input_path, acquisition_frequency,
+            covariance=None, cond_samp_both=False, output_folderpath=None,
             overwrite=False, processing_time_duration="1D",
-            integration_period=None,
-            method="dwt", average_period="30min", wt_kwargs={}, meta={}, **kwargs):
+            integration_period=None, partition=None,
+            method="dwt", average_period="30min", sitename="00000",
+            wt_kwargs={}, meta={}, **kwargs):
     """
     function: process data. (1) gets data, (2) performs wavelet transform, (3) cross calculate variables using conditional_sampling, (4) averages, (5) saves. Implemented as loops to prevent RAM overflow.
     
@@ -431,12 +494,13 @@ def process(
         * covariance (list, default: None): variables to be considered in the calculations as strings in a list. * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]. In this example, "w*co2|w*h2o" means: conditionally sample w*co2 depending on w*co2 and w*h2o. This produces the columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, which mean e.g. in the case wco2+wh2o+ that wco2 is sampled when wco2 is positive AND wh2o is positive.
         * cond_samp_both (bool, default True): If True both parts of the formula are conditionally sampled. If False, only the leading part of the formula is sampled. E.g. if False in case of 'w*co2|w*h2o', we get the output columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, stating wco2 being conditionally sampled e.g. for wco2+wh2o+ when wco2 is positiv AND wh2o is positive. If True, we get the output columns wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco2-wh2o-,wh2o+wco2+,wh2o+wco2-,wh2o-wco2+,wh2o-wco2-, hence, we get both, wco2 and wh2o conditionally sampled.
         * output_folderpath (str, default: None): path to the folder where the output is saved.
-        * verbosity (int, default 1): detail of the log output.
         * overwrite (bool, default False): if files can be overriden. If True, output files not get overriden and no calculation is performed for these data.
         * processing_time_duration (str, default "1D"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM. Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
         * integration_period (int, default None): integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
+        * partition (list, default None): Gives if ET or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this.
         * method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
         * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d. Passed to the main function.
+        * sitename (str, default "00000"): Sitename, files get named accordingly.
         * wt_kwargs (dict, default {}): **kwargs passed to the wavelet tranformation itself. Can e.g. include wavelet specification. See wavelet_function.py for more details. Important setting include f0, which is the lowest frequency for wavelet decomposition. Because adding buffer is necessary to prevent edge effects, a lower f0 drastically increases the amount of data loaded in and the memory usage.
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs
@@ -470,19 +534,6 @@ def process(
                 "UserWarning: Skipping, file already exists ({}).".format(date))
             return False
 
-        # # if all([os.path.exists(output_pathmodel.format(_yl.strftime('%Y%m%d%H%M'))) for _yl in yl[:-1]]):
-        # if all([output_pathmodel.format(_yl.strftime('%Y%m%d%H%M')) in current_files for _yl in yl[:-1]]):
-        #     logger.warning(
-        #         "UserWarning: Skipping, file already exists ({}).".format(date))
-        #     return False
-        # # elif any([os.path.exists(output_pathmodel.format(_yl.strftime('%Y%m%d%H%M'))) for _yl in yl[:-1]]):
-        # if any([output_pathmodel.format(_yl.strftime('%Y%m%d%H%M')) in current_files for _yl in yl[:-1]]):
-        #     logger.warning("UserWarning: Continuing but some files already exist ({}), others don't ({}).".format(
-        #         ', '.join([_yl.strftime('%Y%m%d%H%M') for _yl in yl[:-1] if output_pathmodel.format(_yl.strftime('%Y%m%d%H%M')) in current_files]),
-        #         ', '.join([_yl.strftime('%Y%m%d%H%M') for _yl in yl[:-1] if not output_pathmodel.format(_yl.strftime('%Y%m%d%H%M')) in current_files]),
-        #     ))
-        #     return True
-
         if hc24.checkifinprogress(curoutpath_inprog):
             return False
         return True
@@ -491,8 +542,7 @@ def process(
         start_time = time.time()
         data = loaddatawithbuffer(yl, d1=None, freq=_f, buffer=buffer, f_freq=_f, **load_kwargs)
         if data.empty:
-            if verbosity > 1:
-                logger.warning(f"UserWarning: No file found ({date}, path: {load_kwargs.get('path', 'default')}).")
+            logger.warning(f"UserWarning: No file found ({date}, path: {load_kwargs.get('path', 'default')}).")
             return None
         logger.info(f'\tLoading data took {round(time.time() - start_time)} s.')
         return data
@@ -512,7 +562,6 @@ def process(
         **kwargs.get("load_kwargs", {}),  # allow user to override or extend,
     }
 
-    # kwargs['fmt'] = kwargs.get('fmt', {})
     if 'gas4_name' in kwargs.keys():
         load_kwargs['fmt'].update({kwargs.pop('gas4_name'): '4th gas'})
 
@@ -536,13 +585,6 @@ def process(
         **kwargs.get("logging_kwargs", {})
     }
 
-    general_config = {
-        'sitename': kwargs.get('sitename', '00000'),
-        'verbosity': verbosity,
-        'processing_time_duration': processing_time_duration,
-    }
-
-    
     run_time = datetime.datetime.now().strftime("%Y%m%d%H%M")
     output_path = ""
     output_pathmodel = ""
@@ -555,10 +597,10 @@ def process(
         hc24.start_logging(output_folderpath, **logging_kwargs)
         if method == 'cov':
             output_pathmodel = str(os.path.join(output_folderpath, str(
-                general_config['sitename'])+'_cov_{}_'+run_time+'.csv'))
+                sitename)+'_cov_{}_'+run_time+'.csv'))
         else:
             output_pathmodel = str(os.path.join(output_folderpath, 'wavelet_full_cospectra', str(
-                general_config['sitename'])+'_CDWT_full_cospectra_{}_'+run_time+'.csv'))
+                sitename)+'_CDWT_full_cospectra_{}_'+run_time+'.csv'))
         hc24.mkdirs(output_pathmodel)
         try:
             hc24.save_locals(local_args, os.path.join(output_folderpath, f'log/setup_{run_time}.yml'))
@@ -578,8 +620,7 @@ def process(
     info_t_start = time.time()
     logger.info(f'In load_main.')
 
-    if verbosity:
-        print(f'\nRUNNING WAVELET TRANSFORM ({method})')
+    print(f'\nRUNNING WAVELET TRANSFORM ({method})')
     
     _, _, _f = ymd
     ymd = hc24.list_time_in_period(*ymd, processing_time_duration, include='both')
@@ -651,13 +692,38 @@ def process(
     logger.debug(f"output_pathmodel: {output_pathmodel}.")
     logger.debug(f"fulldata: {fulldata.head()}.")
     if output_pathmodel and not fulldata.empty:
+        
+        # Integrating
         #dst_path = os.path.join(output_folderpath, os.path.basename(
         #    output_pathmodel.format(run_time)))
-        dst_path = os.path.join(output_folderpath + str(general_config['sitename']) + f"_CDWT_fulldata" + ".csv")
+        dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata" + ".csv")
         if integration_period:
-            dst_path = os.path.join(output_folderpath + str(general_config['sitename']) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
+            logger.debug(f'Running Integration of wavelet flux with {integration_period}')
+            dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
             fulldata = integrate_cospectra(fulldata, 1/integration_period, dst_path=None)
         fulldata.to_csv(dst_path, index=False)
+        
+        # Partitioning
+        if partition:
+            if integration_period:
+                if "NEE" in partition:
+                    NEE = True
+                if "ET" in partition:
+                    ET = True
+                av_var = fulldata.columns
+                if not NEE and not ET:
+                    logger.warning("Neiter ET nor NEE set to partition but wanted to partion. This is not possible.")
+                else:
+                    logger.debug(f'Running partitioning of ET:{ET} and NEE:{NEE} with available variables {av_var}')
+                    fulldata = cs_partition_NEE_ET(site_name=sitename, 
+                                        output_folderpath=output_folderpath,
+                                        NEE=NEE,
+                                        ET=ET,
+                                        integration_period=integration_period,
+                                        variables_available=av_var)
+            else:
+                logger.warning("Integration period not set but wanted to partion. This is not possible.")
+    
     return fulldata
 
 

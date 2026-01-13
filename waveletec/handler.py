@@ -10,7 +10,7 @@ import yaml
 # Project modules
 from . import _core as hc24
 from .partitioning import coimbra_et_al_2025 as ptt
-from .partitioning import schoendorf as pttET
+#from .partitioning import schoendorf as pttET
 from ._core import wavelet_functions as wavelet_functions
 from ._extra import eddypro_tools as eddypro
 from ._core import pipeline
@@ -272,92 +272,15 @@ def condition_sampling_partition(site_name, output_folderpath, integration_perio
                                         .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_CH4.csv'), index=False)
         except Exception as e:
             logger.warning(str(e))
-            
 
-def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True, 
+def hndl_cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True, 
     integration_period=None, 
     variables_available=['h2o', 'wh2o+wco2-', 'wh2o-wco2-', 'wh2o-wco2+', 'wh2o+wco2+', 'co2', 'wco2-wh2o+', 'wco2-wh2o-'], 
         newlog=False):
-    """
-    function: Read avaraged and integrated cospectra file, with conditionally sampled fluxes, apply conditional sampling for NEE and ET.
-    Input: 
-        * site_name (str): Site name of the data to be loaded in. Nessessary to construct file names to be loaded. See variable output_folderpath for more information.
-        * output_folderpath (str): Path to folder where the input and output files files are saved. Inside this folder there has to be a file with the pattern os.path.join(output_folderpath, f"{site_name}_CDWT_fulldata_integrated_*min.csv"). Usually produced by integrate_full_spectra_into_file() or by process().
-        * NEE (bool, default True): If True, NEE is partitioned.
-        * ET (bool, default True): If True, ET is partitioned.
-        * integration_period (int, default None): If different files with different integration_period inside the output_folderpath, this helps to find the correct file for conditional sampling. In those functions it is the integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). Also relevant for the filename of saved data. It gets constructed similar to os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O.csv' dependent on the used partitioning algorithm.
-        * variables_available (list, default ['h2o', 'wh2o+wco2-', 'wh2o-wco2-', 'wh2o-wco2+', 'wh2o+wco2+', 'co2', 'wco2-wh2o+', 'wco2-wh2o-']): From which variables are data available. Necessary to test, if partitioning algorithms can be run.
-        * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function condition_sampling_partition() is called on its own, e.g. outside of eddypro_wavelet_run() or with time delay after other functions.
-    Return:
-        dat (Pandas.DataFrame): Dataframe with the partitioned fluxes.
-    """
-    # function to load output file from integrate_full_spectra_into_file() or process()
-    # and, partitiones the data and save its results as well in a new file.
-    # inside process file or inside handler?
-    logger = logging.getLogger('wvlt.handler.cs_partition_NEE_ET')
-    # activate new logging file? Useful if function is called on its own, 
-    # e.g. outside of eddypro_wavelet_run and with time delay after the process().
-    if (output_folderpath is not None) and newlog:
-        hc24.start_logging(output_folderpath)
-        
-    # to be able to have different integration_period = 1/f0, hence different high pass filters in the folder
-    # search for the pattern with variable minutes
-    if not integration_period:
-        pattern = os.path.join(output_folderpath, f"{site_name}_CDWT_fulldata_integrated_*min.csv")
-        matches = glob.glob(pattern)
-        if not matches:
-            raise FileNotFoundError(f"No file found matching {pattern}")
-        if len(matches) > 1:
-            logger.warning(f"Multiple files of integrated cospectra found: {matches}, taking the first one for partitioning! Set integration_period if want to use another one.")
-        dst_path = matches[0]
-        logger.info(f'Taking the file {dst_path} for partitioning.')
-    else:
-        dst_path = os.path.join(output_folderpath + str(site_name) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
-        logger.debug(f"Specified integration_period={integration_period}. Hence taking the file {dst_path}")
+    pipeline.cs_partition_NEE_ET(site_name=site_name, output_folderpath=output_folderpath,
+                        NEE=NEE, ET=ET, integration_period=integration_period,
+                        variables_available=variables_available, newlog=newlog)
     
-    list_dat = []
-    
-    # Partitioning ET
-    if ET:
-        logger.debug("Trying to partition ET")
-        ETpartition_DWCS_required_variables = ['h2o', 'wh2o+wco2-', 'wh2o-wco2-', 'wh2o-wco2+', 'wh2o+wco2+']
-        is_lacking_variable = sum([v not in variables_available for v in ETpartition_DWCS_required_variables])
-        if is_lacking_variable:
-            logger.warning(f'For ETpartition_DWCS with {ETpartition_DWCS_required_variables} lacking variables.')
-        if not is_lacking_variable:
-            logger.debug(f'For ETpartition_DWCS no lacking variables. Necessary variables were {ETpartition_DWCS_required_variables}.')
-            dat_part = pttET.ETpartition_DWCS(str(dst_path))\
-                        .filter(['TIMESTAMP', 'ET', 'T', 'E', 'Dew'])
-            list_dat.append(dat_part)
-    
-    # Partitioning NEE
-    if NEE:
-        logger.debug("Starting to partition NEE")
-        partition_DWCS_H2O_required_variables = ['co2', 'wco2-wh2o+', 'wco2-wh2o-']
-        is_lacking_variable = sum([v not in variables_available for v in partition_DWCS_H2O_required_variables])
-        if is_lacking_variable:
-           logger.warning(f'For partition_DWCS_H2O with {partition_DWCS_H2O_required_variables} lacking variables.')
-        if not is_lacking_variable:
-            logger.debug(f'For partition_DWCS_H2O no lacking variables. Necessary variables were {partition_DWCS_H2O_required_variables}.')
-            dat_part = ptt.partition_DWCS_H2O(str(dst_path), 
-                                        NEE='NEE', GPP='GPP', Reco='Reco', CO2='wco2', 
-                                        CO2neg_H2Opos='wco2-wh2o+', 
-                                        CO2neg_H2Oneg='wco2-wh2o-', NIGHT=None)\
-                                    .filter(['TIMESTAMP', 'NEE', 'GPP', 'Reco'])
-            list_dat.append(dat_part)
-            
-    if list_dat:
-        dat = list_dat[0]
-    for df in list_dat[1:]:
-        dat = dat.merge(df, on="TIMESTAMP", how="outer")
-    dat.to_file(os.path.join(output_folderpath, str(site_name)+'_CDWT_partitioning_NEE_ET.csv'), index=False)
-    
-    return dat
-
-
-
-
-
 
 def set_cwd(workingdir=None):
     """
