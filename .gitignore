@@ -12,3 +12,8 @@ sample/**/output/eddypro_raw_datasets/level_6/*.txt
 sample/*/output/wavelet_flux_*
 sample/*/output/history/*
 sample/*/test*
+
+# Spyder project settings
+.spyderproject
+.spyproject
+

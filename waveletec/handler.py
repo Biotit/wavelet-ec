@@ -319,7 +319,7 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
     
     # Partitioning ET
     if ET:
-        logger.debug(f"Trying to partition ET")
+        logger.debug("Trying to partition ET")
         ETpartition_DWCS_required_variables = ['h2o', 'wh2o+wco2-', 'wh2o-wco2-', 'wh2o-wco2+', 'wh2o+wco2+']
         is_lacking_variable = sum([v not in variables_available for v in ETpartition_DWCS_required_variables])
         if is_lacking_variable:
@@ -332,7 +332,7 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
     
     # Partitioning NEE
     if NEE:
-        logger.debug(f"Starting to partition NEE")
+        logger.debug("Starting to partition NEE")
         partition_DWCS_H2O_required_variables = ['co2', 'wco2-wh2o+', 'wco2-wh2o-']
         is_lacking_variable = sum([v not in variables_available for v in partition_DWCS_H2O_required_variables])
         if is_lacking_variable:
@@ -350,7 +350,7 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
         dat = list_dat[0]
     for df in list_dat[1:]:
         dat = dat.merge(df, on="TIMESTAMP", how="outer")
-    dat.to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_NEE_ET.csv'), index=False)
+    dat.to_file(os.path.join(output_folderpath, str(site_name)+'_CDWT_partitioning_NEE_ET.csv'), index=False)
     
     return dat
 

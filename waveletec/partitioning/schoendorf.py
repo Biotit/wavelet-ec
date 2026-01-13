@@ -2,9 +2,7 @@
 import logging
 
 # 3rd party modules
-#import numpy as np
 import pandas as pd
-#import itertools
 
 # project modules
 from .._core.commons import __input_to_series__

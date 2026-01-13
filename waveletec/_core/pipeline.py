@@ -63,7 +63,7 @@ except ImportError as e:
 # project modules
 from . import commons as hc24
 from .read_data import loaddatawithbuffer
-from .wavelet_functions import universal_wt, formula_to_vars, prepare_signal, bufferforfrequency_dwt, bufferforfrequency, inside_cone_of_influence
+from .wavelet_functions import universal_wt, formula_to_vars, prepare_signal, bufferforfrequency_dwt, bufferforfrequency
 from ..partitioning.coimbra_et_al_2025 import conditional_sampling
 
 logger = logging.getLogger('wvlt.pipeline')
@@ -137,7 +137,7 @@ def decompose_variables(data, variables=['w', 'co2'], method='dwt',
                     data[var], nan_tolerance=nan_tolerance, identifier=identifier)
                 logger.debug(f"signal is ready: {ready_signal.signal.shape}")
                 wt_signal = universal_wt(
-                    signal=ready_signal.signal, method=method, **kwargs, inv=True)
+                    signal=ready_signal.signal, method=method, **kwargs)
                 logger.debug(
                     f"wt_signal is ready: {wt_signal.wave.shape}, {wt_signal.sj}")
                 # φ[var], sj
@@ -208,7 +208,7 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt', nan_tole
     #             signal = np.interp(np.linspace(0, 1, N), 
     #                     np.linspace(0, 1, N)[signan == False],
     #                     signal[signan==False])
-    #         φ[v], sj = universal_wt(signal, method, **wt_kwargs, inv=True)
+    #         φ[v], sj = universal_wt(signal, method, **wt_kwargs)
     #         N = len(signal)
         
 

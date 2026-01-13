@@ -5,21 +5,28 @@ This script is a key part of the following publications:
     Wavelet-Based Eddy Covariance: A New Method for Partitioning Respiration and Photosynthesis. 
     Available at SSRN: https://ssrn.com/abstract=4642939 or http://dx.doi.org/10.2139/ssrn.4642939
 
-- conditional_sampling
-    function: split an array (n dimensions) into 4 arrays based on signal (+ or -) of itself and 2nd array 
-    call: conditional_sampling()
-    Input:
-        args: arrays to be used as filter 
-    Return:
-        b: 
+Modified by Daniel Schöndorf.
 
+Main function:
 - universal_wt
-    function: call any wavelet transform
+    function: performs Continuous Wavelet Transform
     call: universal_wt()
     Input:
-        a: 
+        signal: 1D array
+        method: 'dwt', 'cwt', 'fcwt' (cwt but uses fast algorithm)
+        fs: sampling rate (Hz)
+        f0: highest scale (becomes level for DWT)
+        f1: lowest scale (2x sampling rate)
+        fn: number of scales (only used for CWT)
+        dj: frequency resolution (only used for CWT)
+        wt: run wavelet transform
+        iwt: run inverse wavelet transform
+        coi: calculate cone of influence (only for CWT)
+        **kwargs: keyword arguments sent to wavelet transform and inverse functions 
     Return:
-        b: 
+        A new class object named var_ with class attributes wave, sj, coi, method, fs, f0, f1, fn.
+        Wave is the decomposed signal, sj the wavelet decomposition levels, coi is the cone of influence mask for the signal, the other arguments are the same as their corresponding input.
+
 """
 
 # built-in modules
@@ -61,45 +68,46 @@ def __wavemother_str_pycwt__(name):
     return mother
 
 
-try:
-    import pywt
-    def bufferforfrequency_dwt(N=0, n_=None, fs=20, level=None, f0=None, max_iteration=10**4, wavelet='db6'):
-        if level is None and f0 is None: f0 = 1/(2*60*60)  # 18
-        lvl = level if level is not None else int(np.ceil(np.log2(fs/f0)))
-        if n_ is None: n_ = fs * 60 * 30
-        n0 = N
-        cur_iteration = 0
-        while True:
-            n0 += pd.to_timedelta(n_)/pd.to_timedelta("1s") * fs if isinstance(n_, str) else n_
-            if lvl <= pywt.dwt_max_level(n0, wavelet):
-                break
-            cur_iteration += 1
-            if cur_iteration > max_iteration:
-                warnings.warn('Limit of iterations attained before buffer found. Current buffer allows up to {} levels.'.format(
-                    pywt.dwt_max_level(n0, wavelet)))
-                break
-        return (n0-N) * fs**-1
-except Exception as e:
-    print(f"Error in bufferforfrequency_dwt:\n{e}")
+def bufferforfrequency_dwt(N=0, n_=None, fs=20, level=None, f0=None, max_iteration=10**4, wavelet='db6'):
+    try:
+        import pywt
+    except Exception as e:
+        print(f"Error in bufferforfrequency_dwt:\n{e}")
+    if level is None and f0 is None: f0 = 1/(2*60*60)  # 18
+    lvl = level if level is not None else int(np.ceil(np.log2(fs/f0)))
+    if n_ is None: n_ = fs * 60 * 30
+    n0 = N
+    cur_iteration = 0
+    while True:
+        n0 += pd.to_timedelta(n_)/pd.to_timedelta("1s") * fs if isinstance(n_, str) else n_
+        if lvl <= pywt.dwt_max_level(n0, wavelet):
+            break
+        cur_iteration += 1
+        if cur_iteration > max_iteration:
+            warnings.warn('Limit of iterations attained before buffer found. Current buffer allows up to {} levels.'.format(
+                pywt.dwt_max_level(n0, wavelet)))
+            break
+    return (n0-N) * fs**-1
 
 
-try:
-    import pycwt
-    def bufferforfrequency(f0, dt=0.05, param=6, mother="MORLET", wavelet=pycwt.Morlet(6)):
-        #check if f0 in right units
-        # f0 ↴
-        #    /\
-        #   /  \
-        #  /____\
-        # 2 x buffer
-        
-        if isinstance(wavelet, str): wavelet = __wavemother_str_pycwt__(wavelet)
-        c = wavelet.flambda() * wavelet.coi()
-        n0 = 1 + (2 * (1/f0) * (c * dt)**-1)
-        N = int(np.ceil(n0 * dt))
-        return N
-except Exception as e:
-    print(f"Error in bufferforfrequency:\n{e}")
+def bufferforfrequency(f0, dt=0.05, param=6, mother="MORLET", wavelet=None):
+    try:
+        import pywt
+    except Exception as e:
+        print(f"Error in bufferforfrequency:\n{e}")
+    wavelet = wavelet or pycwt.Morlet(6)
+    #check if f0 in right units
+    # f0 ↴
+    #    /\
+    #   /  \
+    #  /____\
+    # 2 x buffer
+    
+    if isinstance(wavelet, str): wavelet = __wavemother_str_pycwt__(wavelet)
+    c = wavelet.flambda() * wavelet.coi()
+    n0 = 1 + (2 * (1/f0) * (c * dt)**-1)
+    N = int(np.ceil(n0 * dt))
+    return N
 
 
 def formula_to_vars(formula):
@@ -121,14 +129,10 @@ def formula_to_vars(formula):
                                     'uniquevars': list(set(xy + condsamp_flat)), 'combinations': combinations})
 
 
-def __cwt__(input, fs, f0, f1, fn, nthreads=1, scaling="log", fast=False, norm=True, Morlet=6.0):
+def __fcwt__(input, fs, f0, f1, fn, nthreads=1, scaling="log", fast=False, norm=True, Morlet=6.0):
     """
     function: performs Continuous Wavelet Transform
-    call: __cwt__()
-    Input:
-        a: 
-    Return:
-        b: 
+    call: __fcwt__()
     """
 
     #check if input is array and not matrix
@@ -191,22 +195,18 @@ def __icwt__(W, sj, dt, dj, Cd=None, psi=None, wavelet=None):
     return x
 
    
-def __dwt__(*args, level=None, wavelet="db6"):
+def __dwt__(signal, level=None, wavelet="db6", **kwargs):
     """
     function: performs Discrete Wavelet Transform
     call: __dwt__()
     Input:
-        *args: arrays (1D) to be transformed
+        signal: array (1D) to be transformed
         level: maximum scale (power of 2)
         wavelet: mother wavelet (comprehensible to pywt)
     Return:
         Ws: list of 2D arrays
     """
-    Ws = []
-    for X in args:
-        Ws += [pywt.wavedec(X, wavelet, level=level)]
-    # level = len(Ws[-1])-1
-    return Ws
+    return pywt.wavedec(signal, wavelet, level=level, **kwargs)
 
 
 def waverec_2d(coeffs, N, wavelet, mode='symmetric'):
@@ -242,22 +242,20 @@ def waverec_2d(coeffs, N, wavelet, mode='symmetric'):
     return reconstructed_levels
 
 
-def __idwt__(*args, N, wavelet='db6', mode='symmetric'):
+def __idwt__(coef, N, wavelet='db6', mode='symmetric'):
     """
     function: performs Inverse Discrete Wavelet Transform
     call: __idwt__()
     Input:
-        *args: 2D arrays containing wavelet coefficient
+        coef: 2D arrays containing wavelet coefficient
         N: data lenght
         wavelet: mother wavelet (comprehensible to pywt)
     Return:
-        Ys: list of 2D arrays
+        reconstructed_signal: list of 2D arrays
     """
-    Ys = []
-    for W in args:
-        reconstructed_signal = waverec_2d(W, N, wavelet, mode=mode)
-        Ys += [np.array(reconstructed_signal[::-1])]
-    return Ys
+    reconstructed_signal = waverec_2d(coef, N, wavelet, mode=mode)
+    reconstructed_signal = np.array(reconstructed_signal[::-1])
+    return reconstructed_signal
 
 
 def prepare_signal(signal, nan_tolerance=0.3, identifier='0000'):
@@ -310,10 +308,10 @@ def cone_of_influence(n0, dt, wavelet=None):
     coi = wavelet.flambda() * wavelet.coi() * dt * coi    
     return coi
 
-def inside_cone_of_influence(sj, **kwargs):
+def cone_of_influence_mask(sj, **kwargs):
     """
     function: calculates the cone of influence for a given wavelet transform
-    call: inside_cone_of_influence()
+    call: cone_of_influence_mask()
     Input:
         sj: scales
         kwargs: keyword arguments for wavelet transform (e.g., dt, wavelet)
@@ -323,11 +321,12 @@ def inside_cone_of_influence(sj, **kwargs):
     
     coi = np.array([[s >= (1 / c)
                    for c in cone_of_influence(**kwargs)] for s in sj])
+    return coi
 
     return coi
 
 def universal_wt(signal, method='dwt', fs=20, f0=1/(3*60*60), f1=10, fn=180, 
-                 dj=1/12, inv=True, **kwargs):
+                 dj=1/12, wt=True, iwt=True, coi=True, **kwargs):
     """
     function: performs Continuous Wavelet Transform
     call: universal_wt()
@@ -339,60 +338,79 @@ def universal_wt(signal, method='dwt', fs=20, f0=1/(3*60*60), f1=10, fn=180,
         f1: lowest scale (2x sampling rate)
         fn: number of scales (only used for CWT)
         dj: frequency resolution (only used for CWT)
-        inv: . Default is True
+        wt: run wavelet transform
+        iwt: run inverse wavelet transform
+        coi: calculate cone of influence (only for CWT)
         **kwargs: keyword arguments sent to wavelet transform and inverse functions 
     Return:
-        wave: 2D array
-        sj: scales 
+        A new class object named var_ with class attributes wave, sj, coi, method, fs, f0, f1, fn.
+        Wave is the decomposed signal, sj the wavelet decomposition levels, coi is the cone of influence mask for the signal, the other arguments are the same as their corresponding input.
     """
     assert method in [
         'dwt', 'cwt', 'fcwt'], "Method not found. Available methods are: dwt, cwt, fcwt"
-       
+
     if method == 'fcwt':
         if fcwt is not None:
-            """Run Continuous Wavelet Transform, using fast algorithm"""
-            _l, wave = __cwt__(signal, fs, f0, f1, fn, **kwargs)
-            sj = np.log2(fs/_l)
-            if inv:
-                wave = __icwt__(wave, sj=sj, dt=fs, dj=dj, **kwargs, 
-                            wavelet=pycwt.wavelet.Morlet(6))
-            sj = list(sj)
+            pass
         else:
-            logger.warning('UserWarning: Fast continuous wavelet transform (fcwt) not found. Running slow version.')
+            logger.warning(
+                'UserWarning: Fast continuous wavelet transform (fcwt) not found. Running slow version.')
             method = 'cwt'
-    
-    elif method == 'cwt':
+
+    if method == 'cwt':
         if pycwt is not None:
+            pass
+        else:
+            logger.warning(
+                'UserWarning: Continuous wavelet transform (cwt) not found. Running discrete version.')
+            method = 'dwt'
+
+    if wt:
+        # Wavelet Transform
+        if method == 'fcwt':
+            """Run Continuous Wavelet Transform, using fast algorithm"""
+            _l, wave = __fcwt__(signal, fs, f0, f1, fn, **kwargs)
+            sj = np.log2(fs/_l)
+            sj = list(sj)
+
+        elif method == 'cwt':
             """Run Continuous Wavelet Transform"""
             wave, sj, _, _, _, _ = pycwt.cwt(
                 signal, dt=1/fs, s0=2/fs, dj=dj, J=fn-1, **kwargs)
             sj = np.log2(sj*fs)
-            if inv:
-                wave = __icwt__(wave, sj=sj, dt=fs**-1, dj=dj, **kwargs)
             sj = list(sj)
-        else:
-            logger.warning('UserWarning: Continuous wavelet transform (cwt) not found. Running discrete version.')
-            method = 'dwt'
-    
-    elif method == "dwt":
-        """Run Discrete Wavelet Transform"""
-        lvl = kwargs.pop('level', int(np.ceil(np.log2(fs/f0))))
-        # _l if s0*2^j; fs*2**(-_l) if Hz; (1/fs)*2**_l if sec.
-        sj = [_l for _l in np.arange(1, lvl+2, 1)]
-        waves = __dwt__(signal, level=lvl, **kwargs)
-        if inv:
-            N = np.array(signal).shape[-1]
-            waves = __idwt__(*waves, N=N, **kwargs)
-            waves = waves[0].real
-        # wave = waves[0][0]
 
-    # COI. Only if cwt, not for dwt.
-    if method=='dwt':
-        coi = None
+        elif method == "dwt":
+            """Run Discrete Wavelet Transform"""
+            lvl = kwargs.pop('level', int(np.ceil(np.log2(fs/f0))))
+            # _l if s0*2^j; fs*2**(-_l) if Hz; (1/fs)*2**_l if sec.
+            sj = [_l for _l in np.arange(1, lvl+2, 1)]
+            wave = __dwt__(signal, level=lvl, **kwargs)
     else:
-        coi = inside_cone_of_influence(sj=sj, dt=1/fs,
+        wave = signal
+
+    if iwt:
+        # Inverse Wavelet Transform
+        if method == 'fcwt':
+            sj = kwargs.pop('sj', None)
+            wave = __icwt__(wave, sj=sj, dt=fs, dj=dj, **kwargs, 
+                        wavelet=pycwt.wavelet.Morlet(6))
+        
+        elif method == 'cwt':
+            sj = kwargs.pop('sj', None)
+            wave = __icwt__(wave, sj=sj, dt=fs**-1, dj=dj, **kwargs)
+        
+        elif method== "dwt":
+            N = np.array(signal).shape[-1]
+            wave = __idwt__(wave, N=N, **kwargs).real
+    
+    # COI. Only if cwt, not for dwt.
+    if not coi or method=='dwt':
+        coneoi = None
+    else:
+        coneoi = cone_of_influence_mask(sj=sj, dt=1/fs,
                                        n0=len(signal),
                                        wavelet=kwargs.get('wavelet', None)
                                        )
-    return type('var_', (object,), {'wave': waves, 'sj': sj, 'coi': coi, 'method': method, 'fs': fs, 'f0': f0, 'f1': f1, 'fn': fn})
-    # return {'wave': waves, 'sj': sj, 'coi': coi, 'method': method, 'fs': fs, 'f0': f0, 'f1': f1, 'fn': fn}
+    return type('var_', (object,), {
+        'wave': wave, 'sj': sj, 'coi': coneoi, 'method': method, 'fs': fs, 'f0': f0, 'f1': f1, 'fn': fn})
