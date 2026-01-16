@@ -477,7 +477,7 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
 
 def process(datetimerange, fileduration, input_path, acquisition_frequency,
             covariance=None, cond_samp_both=False, output_folderpath=None,
-            overwrite=False, processing_time_duration="1D",
+            overwrite=False, processing_time_duration="1d",
             integration_period=None, partition=None,
             method="dwt", average_period="30min", sitename="00000",
             wt_kwargs={}, meta={}, **kwargs):
@@ -488,14 +488,14 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
     
     Input:
         * datetimerange (str): date time range from which the data is processed. Format: YYYYMMDDHHMM-YYYYMMDDHHMM
-        * fileduration (int): time range that the input files cover in minutes (e.g. 30).
+        * fileduration (int): time range that the input files cover in minutes (e.g. 30). Needed inside bufferforfrequency_dwt() for only taking steps in file-size to calculate buffer size. Also necessary to calculate correct file names from bmmflux inside universal_reader().
         * input_path (str): path to the folder where the input files are located.
         * acquisition_frequency (int): frequency of the data in Hz. Used as dt = 1/acquisition_frequency. Used to calculate the sampling frequency fs for wavelet decomposition inside of decompose_data() and then passed to universal_wt().
         * covariance (list, default: None): variables to be considered in the calculations as strings in a list. * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]. In this example, "w*co2|w*h2o" means: conditionally sample w*co2 depending on w*co2 and w*h2o. This produces the columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, which mean e.g. in the case wco2+wh2o+ that wco2 is sampled when wco2 is positive AND wh2o is positive.
         * cond_samp_both (bool, default True): If True both parts of the formula are conditionally sampled. If False, only the leading part of the formula is sampled. E.g. if False in case of 'w*co2|w*h2o', we get the output columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, stating wco2 being conditionally sampled e.g. for wco2+wh2o+ when wco2 is positiv AND wh2o is positive. If True, we get the output columns wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco2-wh2o-,wh2o+wco2+,wh2o+wco2-,wh2o-wco2+,wh2o-wco2-, hence, we get both, wco2 and wh2o conditionally sampled.
         * output_folderpath (str, default: None): path to the folder where the output is saved.
         * overwrite (bool, default False): if files can be overriden. If True, output files not get overriden and no calculation is performed for these data.
-        * processing_time_duration (str, default "1D"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM. Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
+        * processing_time_duration (str, default "1d"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM. Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
         * integration_period (int, default None): integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
         * partition (list, default None): Gives if ET or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this.
         * method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
@@ -514,9 +514,9 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
 
     def _date_from_yl(date):
         date = re.sub('[-: ]', '', str(date))
-        if processing_time_duration.endswith("D"):
+        if processing_time_duration.endswith("d"):
             date = date[:8]
-        if processing_time_duration.endswith("H") or processing_time_duration.endswith("Min"):
+        if processing_time_duration.endswith("h") or processing_time_duration.endswith("min"):
             date = date[:12]
         return date
     
@@ -554,7 +554,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
     # Group parameters for each function
     load_kwargs = {
         # 'datetimerange': datetimerange,
-        # 'fileduration': fileduration,
+        'fileduration': fileduration,
         'path': input_path,
         # 'acquisition_frequency': acquisition_frequency,
         'fkwargs': {'dt': 1/acquisition_frequency},
@@ -638,7 +638,11 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
     for yl in ymd:
         date = _date_from_yl(yl[0])
 
-        print(prev_print, date, 'reading', ' '*10, sep=' ', end='\n')
+        print(prev_print, 'Reading ', processing_time_duration, 'chunks of data.')
+        print(prev_print, 'Currently chunk starting from', yl[0], 'to', yl[-1])
+        
+        
+        # print(prev_print, date, 'reading', ' '*10, sep=' ', end='\n')
         prev_print = '\x1B[1A\r'
 
         if output_pathmodel:
@@ -672,7 +676,8 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
                 f_transform_kwargs['varstorun'] = [f]
                 logger.debug(f"Available data columns: {data.columns.tolist()}")
                 logger.debug(f"Processing formula: {f}, varstorun passed to main(): {transform_kwargs['varstorun']}")
-                output = main(data, period=[min(yl), max(yl)], cond_samp_both=cond_samp_both,
+                output = main(data, period=[min(yl), max(yl)], 
+                              cond_samp_both=cond_samp_both,
                               meta=meta,
                               output_kwargs=output_kwargs, **f_transform_kwargs)
                 saved_files.append(output.saved)
@@ -727,7 +732,8 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
     return fulldata
 
 
-def main(data, varstorun, period=None, average_period='30min', cond_samp_both=False, output_kwargs={}, meta={}, **kwargs):
+def main(data, varstorun, period=None, average_period='30min', 
+         cond_samp_both=False, output_kwargs={}, meta={}, **kwargs):
     """
     function: Performs wavelet transform for specified variables, cross calculate variables using conditional_sampling and averages. Can save the data in files.
     call: main()
@@ -832,8 +838,7 @@ def main(data, varstorun, period=None, average_period='30min', cond_samp_both=Fa
         set(['TIMESTAMP', 'natural_frequency']) & set(growingdata.columns))
     growingdata = growingdata.groupby(__ID_COLS__).agg(
         "mean").reset_index(drop=False)
-    
-    # integrate
+
 
     # save in dataframe and .csv
     growingdata = (growingdata.sort_values(by=__ID_COLS__)

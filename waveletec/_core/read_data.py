@@ -23,6 +23,7 @@ from functools import reduce
 # 3rd party modules
 import yaml
 import numpy as np
+import pandas as pd
 from itertools import chain
 from scipy.optimize import curve_fit
 from sklearn.linear_model import LinearRegression, RANSACRegressor, HuberRegressor, QuantileRegressor
@@ -31,7 +32,7 @@ from io import StringIO
 from pandas.api.types import is_numeric_dtype, is_object_dtype
 
 # project modules
-from .commons import update_nested_dicts, structuredData
+from .commons import update_nested_dicts, structuredData, yaml_to_dict
 from .addons import *
 
 ##########################################
@@ -53,7 +54,7 @@ DEFAULT_FILE_RAW = {
 DEFAULT_READ_CSV = {
     'handle_eddypro_raw_dataset': True,
     'skiprows': 8,
-    'sep': r"\s+",
+    'sep': "\\s+",
     'na_values': ['NaN', 'nan', -9999],
 }
 
@@ -147,7 +148,13 @@ class structuredDataFrame:
 
 
 def __universal_reader__(path, **kw_csv):
+    logger = logging.getLogger('wvlt.read_data.__universal_reader__')
+    
     handle_eddypro_raw_dataset = kw_csv.pop('handle_eddypro_raw_dataset', False)
+    handle_bmmflux_raw_dataset = kw_csv.pop('handle_bmmflux_raw_dataset', False)
+    if handle_eddypro_raw_dataset and handle_bmmflux_raw_dataset:
+        logger.critical("Specified handle_eddypro_raw_dataset and handle_bmmflux_raw_dataset both True. This should not be possible!")
+    
     if path.endswith('.gz'): kw_csv.update(**{'compression': 'gzip'})
     elif path.endswith('.csv'): kw_csv.pop('compression', None)
     if path.endswith('.ghg'):
@@ -161,7 +168,11 @@ def __universal_reader__(path, **kw_csv):
     try:
         if handle_eddypro_raw_dataset:
             with open(path, 'r') as file: header = [c.replace('\n', '').strip() for c in file.readlines()[9].split('  ') if c]
-            kw_csv.update({'skiprows': 10, 'sep': '\s+', 'na_values': ['NaN', 'nan', -9999], 'names': header})
+            kw_csv.update({'skiprows': 10, 'sep': '\\s+', 'na_values': ['NaN', 'nan', -9999], 'names': header})
+        elif handle_bmmflux_raw_dataset:
+            #logger.debug('Inside handle_bmmflux_raw_dataset')
+            with open(path, 'r') as file: header = file.readlines()[0].strip().split(',')
+            kw_csv.update({'skiprows': 2, 'sep': ',', 'na_values': ['NaN', 'nan', -9999], 'names': header})
         df_td = pd.read_csv(path, **kw_csv)
     except Exception as e:
         # (EOFError, pd.errors.ParserError, pd.errors.EmptyDataError):
@@ -173,13 +184,16 @@ def __universal_reader__(path, **kw_csv):
             return None
     return df_td
 
-def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verbosity=1, fkwargs={}, tipfile="readme.txt", **kwargs):
+def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verbosity=2, fkwargs={}, tipfile="readme.txt", **kwargs):
     """
     path: str or dict 
     e.g. (str): path = str(os.path.join(inputpath, 'eddypro_raw_datasets/level_6'))
     e.g. (dict): path = {k: str(os.path.join(v, 'eddypro_raw_datasets/level_6')) for k, v in inputpath.items()}
         where k will become the suffix in case of duplicates
     """
+    logger = logging.getLogger('wvlt.read_data.universal_reader')
+    
+    
     if isinstance(path, dict):
         dataframes = {}
         for k, v in path.items():
@@ -198,8 +212,8 @@ def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verb
             df_site = reduce(lambda left, right: pd.merge(left, right, on='TIMESTAMP', how='outer', suffixes=('', '_DUP')), 
                             list(dataframes.values()))
         except Exception as e:
-            logging.error(str(e))
-            logging.debug('Concatenating instead of merging.')
+            logger.error(str(e))
+            logger.debug('Concatenating instead of merging.')
             #df_site = reduce(lambda left, right: pd.concat([left, right], axis=1), dataframes)
             return structuredDataFrame(pd.DataFrame(), dt=dt)
         #for k, v in dataframes.items():
@@ -211,20 +225,34 @@ def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verb
     folders = [path + p + '/' for p in os.listdir(path) if os.path.isdir(path + p)]
     folders = folders if folders else [path]
     
+    if verbosity > 1: logger.debug(f"Check readable files in {path}")
     #print("Check readable files in", path if len(path)<40 else f'{path[:5]}...{path[-30:]}')#, fmt, fkwargs, kwargs)
 
     for path_ in folders:
+        if verbosity > 1: logger.debug(f"Read files from {path_}")
         df_td = pd.DataFrame()
 
         # read tips file
+        if verbosity > 1: logger.debug(f"Trying to read tipfile from {os.path.join(path, tipfile)}")
         kw_ = update_nested_dicts({"FILE_RAW": DEFAULT_FILE_RAW, "READ_CSV": DEFAULT_READ_CSV, "FMT_DATA": DEFAULT_FMT_DATA}, 
                                   os.path.join(path, tipfile), os.path.join(path_, tipfile),
                                   {"FILE_RAW": fkwargs, "READ_CSV": kwargs, "FMT_DATA": fmt},
                                   fstr=lambda d: yaml_to_dict(d))
-        
+        if verbosity > 1: logger.debug(f"kw_ is {kw_}")
         kw = structuredData(**kw_['FILE_RAW'])
+        
         kw_csv = kw_['READ_CSV']
         if kw_csv != DEFAULT_READ_CSV: kw_csv['handle_eddypro_raw_dataset'] = False
+        
+        if verbosity > 1: logger.debug(f"lookup before handle_bmmflux_raw_dataset is {lookup}")
+        if kw_csv.get('handle_bmmflux_raw_dataset'):
+            logger.info('handle_bmmflux_raw_dataset was True, therefore resetting the matching file_pattern and the matching date format.')
+            kw.file_pattern = "([0-9]{8}_[0-9]{6}).*?_3Drot_frc_tempplausadj\\.csv"
+            kw.date_format = '%Y%m%d_%H%M%S'
+            # need to redefine lookup, because bmmflux files always have the
+            # mid of the file period in their file name not the beginning
+            fileduration = kw_csv.get('fileduration')
+            lookup = [f + datetime.timedelta(minutes=(fileduration/2)) for f in lookup]
         
         try:
             if ('header_file' in kw_csv.keys()) and (os.path.exists(kw_csv['header_file'])):
@@ -232,7 +260,11 @@ def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verb
         except:
             None
         
+        if verbosity > 1: logger.debug(f"lookup is {lookup}")
         lookup_ = list(set([f.strftime(kw.date_format) for f in lookup]))
+        if verbosity > 1:
+            logger.debug(f"lookup_ is {lookup_}")
+            
         files_list = {}
 
         for root, directories, files in os.walk(path_):
@@ -241,54 +273,49 @@ def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verb
                 if len(dateparts) == 1:
                     files_list[dateparts[0]] = os.path.join(root, name)
         
+        if verbosity > 1: logger.debug(f"Five entries to files_list.keys() with the found dateparts are {list(files_list.keys())[0:5]}")
+        
+        #logger.debug(f"Found {len(files_list.keys())} files. One of them is {list(files_list.keys())[1]}.")
+        
+        # removing fileduration from the dict if it exists in there, because not needed inside __universal_reader__
+        kw_csv.pop('fileduration', None) 
+        # if lookup input existed (list with datetimes), 
+        # we only load those files that their name pattern has a matching
+        # time interval 
+        # --> see the finding of dateparts in the file names above.
+        # These dateparts make up the dictionary files_list
+        # and hence, they need to match the lookup_, which is lookup but converted
+        # to strings following the specified kw.date_format.
         for td in set(lookup_) & files_list.keys() if lookup_ != [] else files_list.keys():
             path_to_tdfile = files_list[td]
             if os.path.exists(path_to_tdfile):
+                if verbosity > 1: logger.debug(f"Reading file {path_to_tdfile}")
                 df_td = __universal_reader__(path_to_tdfile, **kw_csv)
-                """
-                if path_to_tdfile.endswith('.gz'): kw_csv.update(**{'compression': 'gzip'})
-                elif path_to_tdfile.endswith('.csv'): kw_csv.pop('compression', None)
-                if path_to_tdfile.endswith('.ghg'):
-                    with zipfile.ZipFile(path_to_tdfile, 'r') as zip_ref:
-                        datafile = [zip_ref.read(name) for name in zip_ref.namelist() if name.endswith(".data")][0]
-                    datafile = str(datafile, 'utf-8')
-                    path_to_tdfile = StringIO(datafile)
-                    # DEFAULT_READ_GHG
-                    kw_csv.update(DEFAULT_READ_GHG)
-                try:
-                    df_td = pd.read_csv(path_to_tdfile, **kw_csv)
-                except Exception as e:
-                    # (EOFError, pd.errors.ParserError, pd.errors.EmptyDataError):
-                    try:
-                        if verbosity>1: warnings.warn(f'{e}, when opening {path_to_tdfile}, using {kw_csv}. Re-trying using python as engine and ignoring bad lines.')
-                        df_td = pd.read_csv(path_to_tdfile, on_bad_lines='warn', engine='python', **kw_csv)
-                    except Exception as ee:
-                        warnings.warn(f'{ee}, when opening {str(path_to_tdfile)}, using {kw_csv}')
-                        continue
-                """
-                """
-                if kw.tname in df_td.columns:
-                    try:
-                        df_td.loc[:, kw.tname] = pd.to_datetime(df_td.loc[:, kw.tname].astype(str))
-                        print(max(df_td[kw.tname].dt.year), max(df_td[kw.tname]), min(df_td[kw.tname].dt.year))
-                        assert max(df_td[kw.tname].dt.year) > 1990 and min(df_td[kw.tname].dt.year) > 1990
-                    except:
-                        df_td.rename({kw.tname+'_orig': kw.tname})
-                """
+                if verbosity > 1: logger.debug(f'File read, header is {df_td.head()}.')
+                
                 if kw.datefomatfrom == 'drop':
                     df_td = df_td.rename({kw.tname: kw.tname+'_orig'})
                 
                 if kw.tname not in df_td.columns or kw.datefomatfrom == 'drop':
+                    if verbosity > 1: logger.debug(f"Not found your Timestamp column name {kw.tname} or datefomatfrom=='drop'. Creating new column {kw.tname}.")
                     if "date" in df_td.columns and "time" in df_td.columns:
                         df_td[kw.tname] = pd.to_datetime(
                             df_td.date + " " + df_td.time, format='%Y-%m-%d %H:%M')
+                    elif any(col in df_td.columns for col in ['Year', 'Month', 'Day', 'Hour', 'Minute', 'Second', 'Millisecond']):
+                        # for bmmflux files
+                        present_col = [col for col in ['Year', 'Month', 'Day', 'Hour', 'Minute', 'Second', 'Millisecond'] if col in df_td.columns]
+                        if verbosity > 1:
+                            logger.debug(f"Creating new column {kw.tname} from the columns {present_col}.")
+                        df_td[kw.tname] = pd.to_datetime(df_td[present_col])
                     else:
+                        if verbosity > 1: logger.debug("Did not found data or time columns. Creating Timestamp using specified dt.")
                         df_td[kw.tname] = pd.to_datetime(
                             td, format=kw.date_format) - datetime.timedelta(seconds=kw.dt) * (len(df_td)-1 + -1*df_td.index)
                             #td, format=kw.date_format) + datetime.timedelta(seconds=kw.dt) * (df_td.index)
                         df_td[kw.tname] = df_td[kw.tname].dt.strftime(
                             kw.datefomatto)
                 else:
+                    if verbosity > 1: logger.debug("Found your specified timestamp column {kw.tname}. Now testing if numeric or if necessary to transform.")
                     try:
                         if is_numeric_dtype(df_td[kw.tname]):
                             df_td.loc[:, kw.tname] = df_td.loc[:, kw.tname].apply(lambda e: pd.to_datetime('%.2f' % e, format=kw.datefomatfrom).strftime(kw.datefomatto))
@@ -337,6 +364,7 @@ def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verb
         #if 'co2' in df_site.columns and (abs(np.max(df_site.co2)) < 1000) and (abs(np.min(df_site.co2)) < 1000):
         #    df_site.loc[:, "co2"] = df_site.loc[:, "co2"] * 1000  # mmol/m3 -> μmol/m3
     
+        
     if kw.id is not None:
         return {kw.id: structuredDataFrame(df_site, dt=kw.dt)}
     else:
