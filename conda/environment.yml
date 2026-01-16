@@ -43,6 +43,7 @@ dependencies:
   - threadpoolctl
   - tzdata
   - joblib
+  - tqdm
 
   # Base system libs
   - bzip2

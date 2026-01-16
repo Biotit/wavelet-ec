@@ -29,6 +29,7 @@ import itertools
 from scipy.optimize import curve_fit
 import pywt
 import yaml
+import tqdm # progress bar
 try: 
     import pycwt
 except ImportError as e:
@@ -113,6 +114,7 @@ def decompose_variables(data, variables=['w', 'co2'], method='dwt',
         logger.debug(f"Debug variables are: {variables} and data columns are: {data.columns.tolist()}")
         assert len(
             variables), 'Empty list of covariances to run. Check available variables and covariances to be performed.'
+        
         for var in variables:
             if var not in φ.keys():
                 ready_signal = prepare_signal(
@@ -142,7 +144,7 @@ def decompose_variables(data, variables=['w', 'co2'], method='dwt',
 
 
 def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt', 
-                   nan_tolerance=.3, memory_eff=True, **kwargs):
+                   nan_tolerance=.3, memory_eff=True, verbosity=1, **kwargs):
     """
     function: Calculate data decomposed with wavelet transform
     call: decompose_data()
@@ -218,11 +220,11 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt',
                                       np.concatenate(values, axis=0), columns=φs_names)
     
     __temp__.set_index('TIMESTAMP', inplace=True)
-    # logger.debug(f'\t\tpd.MultiIndex.from_tuples: {[tuple(c.split("_")) for c in __temp__.columns]}.')
+    if verbosity > 1: logger.debug(f'\t\tpd.MultiIndex.from_tuples: {[tuple(c.split("_")) for c in __temp__.columns]}.')
     
-    #logger.debug(f'Calculating natural_frequency from scales for {__temp__.head()}.')
+    if verbosity > 1: logger.debug(f'Calculating natural_frequency from scales for {__temp__.head()}.')
     __temp__.columns = pd.MultiIndex.from_tuples([tuple(c.rsplit('_', 1)) for c in __temp__.columns])
-    #logger.debug(f'Calculating natural_frequency from scales for MultiIndex {__temp__.head()}.')
+    if verbosity > 1: logger.debug(f'Calculating natural_frequency from scales for MultiIndex {__temp__.head()}.')
     
     if memory_eff==False: # old processing: memory heavy, but fast
         t0 = time.perf_counter()
@@ -258,7 +260,7 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt',
     #__temp__ = __temp__.melt(['TIMESTAMP'] + φ.keys())
     #__temp__ = pd.concat([__temp__.pop('variable').str.extract(pattern, expand=True), __temp__], axis=1)
     __temp_l__['natural_frequency'] = __temp_l__['natural_frequency'].apply(lambda j: 1/hc24.j2sj(j, 1/dt) if j else np.nan)
-    # logger.debug(f'Calculating natural_frequency finished. Returning DataFrame {__temp_l__.head()}')
+    if verbosity > 1: logger.debug(f'Calculating natural_frequency finished. Returning DataFrame {__temp_l__.head()}')
     return __temp_l__
 
 
@@ -635,15 +637,16 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
 
     # Skip two line
     prev_print = '\n'
-    for yl in ymd:
+    print(f"{prev_print} Wavelet decompositon seperated into {processing_time_duration} chunks of data.{prev_print}")
+    
+    prev_print = '\x1B[1A\r'
+    for yl in tqdm.tqdm(ymd): # for yl in ymd:
         date = _date_from_yl(yl[0])
-
-        print(prev_print, 'Reading ', processing_time_duration, 'chunks of data.')
-        print(prev_print, 'Currently chunk starting from', yl[0], 'to', yl[-1])
         
+        print(prev_print, 'Current chunk starting from', yl[0], 'to', yl[-1])
         
         # print(prev_print, date, 'reading', ' '*10, sep=' ', end='\n')
-        prev_print = '\x1B[1A\r'
+        #prev_print = '\x1B[1A\r'
 
         if output_pathmodel:
             curoutpath_inprog = output_pathmodel.format(date).rsplit(".", 1)[
@@ -703,6 +706,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         #    output_pathmodel.format(run_time)))
         dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata" + ".csv")
         if integration_period:
+            print(f'\n \n Integration of all frequencies until a period of {integration_period} s.')
             logger.debug(f'Running Integration of wavelet flux with {integration_period}')
             dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
             fulldata = integrate_cospectra(fulldata, 1/integration_period, dst_path=None)
@@ -711,6 +715,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         # Partitioning
         if partition:
             if integration_period:
+                print(f'\n Partitioning of integrated wavelet flux.')
                 if "NEE" in partition:
                     NEE = True
                 if "ET" in partition:
