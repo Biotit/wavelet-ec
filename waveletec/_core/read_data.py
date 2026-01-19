@@ -184,7 +184,7 @@ def __universal_reader__(path, **kw_csv):
             return None
     return df_td
 
-def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verbosity=2, fkwargs={}, tipfile="readme.txt", **kwargs):
+def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verbosity=1, fkwargs={}, tipfile="readme.txt", **kwargs):
     """
     path: str or dict 
     e.g. (str): path = str(os.path.join(inputpath, 'eddypro_raw_datasets/level_6'))

@@ -53,9 +53,7 @@ except ImportError as e:
     fcwt = None
     pass
 
-# project modules
-
-logger = logging.getLogger('wvlt')
+logger = logging.getLogger('wvlt.wavelet_functions')
 
 
 def __wavemother_str_pycwt__(name):
@@ -69,10 +67,11 @@ def __wavemother_str_pycwt__(name):
 
 
 def bufferforfrequency_dwt(N=0, n_=None, fs=20, level=None, f0=None, max_iteration=10**4, wavelet='db6'):
+    logger = logging.getLogger('wvlt.wavelet_functions.bufferforfrequency_dwt')
     try:
         import pywt
     except Exception as e:
-        print(f"Error in bufferforfrequency_dwt:\n{e}")
+        logger.error(f"Error in bufferforfrequency_dwt:\n{e}")
     if level is None and f0 is None: f0 = 1/(2*60*60)  # 18
     lvl = level if level is not None else int(np.ceil(np.log2(fs/f0)))
     if n_ is None: n_ = fs * 60 * 30
@@ -91,10 +90,11 @@ def bufferforfrequency_dwt(N=0, n_=None, fs=20, level=None, f0=None, max_iterati
 
 
 def bufferforfrequency(f0, dt=0.05, param=6, mother="MORLET", wavelet=None):
+    logger = logging.getLogger('wvlt.wavelet_functions.bufferforfrequency')
     try:
         import pywt
     except Exception as e:
-        print(f"Error in bufferforfrequency:\n{e}")
+        logger.error(f"Error in bufferforfrequency:\n{e}")
     wavelet = wavelet or pycwt.Morlet(6)
     #check if f0 in right units
     # f0 ↴
@@ -273,6 +273,7 @@ def prepare_signal(signal, nan_tolerance=0.3, identifier='0000'):
          * N: len(signal)
          * Nnan: number of NAN
     """
+    logger = logging.getLogger('wvlt.wavelet_functions.prepare_signal')
     signal = np.array(signal)
     signan = np.isnan(signal)
     N = len(signal)
@@ -333,19 +334,20 @@ def universal_wt(signal, method='dwt', fs=20, f0=1/(3*60*60), f1=10, fn=180,
     Input:
         signal: 1D array
         method: 'dwt', 'cwt', 'fcwt' (cwt but uses fast algorithm)
-        fs: sampling rate (Hz)
-        f0: highest scale (becomes level for DWT)
-        f1: lowest scale (2x sampling rate)
-        fn: number of scales (only used for CWT)
-        dj: frequency resolution (only used for CWT)
-        wt: run wavelet transform
-        iwt: run inverse wavelet transform
-        coi: calculate cone of influence (only for CWT)
+        fs (int, default 20): sampling rate (Hz)
+        f0 (float, default 1/(3*60*60)): highest scale (becomes level for DWT)
+        f1 (int, default 10): lowest scale (2x sampling rate)
+        fn (int, default 180): number of scales (only used for CWT)
+        dj (float, default 1/12): frequency resolution (only used for CWT)
+        wt (bool, default True): run wavelet transform
+        iwt (bool, default True): run inverse wavelet transform
+        coi (bool, default True): calculate cone of influence (only for CWT)
         **kwargs: keyword arguments sent to wavelet transform and inverse functions 
     Return:
         A new class object named var_ with class attributes wave, sj, coi, method, fs, f0, f1, fn.
         Wave is the decomposed signal, sj the wavelet decomposition levels, coi is the cone of influence mask for the signal, the other arguments are the same as their corresponding input.
     """
+    logger = logging.getLogger('wvlt.wavelet_functions.universal_wt')
     assert method in [
         'dwt', 'cwt', 'fcwt'], "Method not found. Available methods are: dwt, cwt, fcwt"
 

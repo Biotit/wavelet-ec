@@ -45,7 +45,6 @@ except ImportError as e:
 from . import commons as hc24
 from .read_data import loaddatawithbuffer
 from .wavelet_functions import universal_wt, formula_to_vars, prepare_signal, bufferforfrequency_dwt, bufferforfrequency
-#from ..partitioning.coimbra_et_al_2025 import conditional_sampling
 from ..partitioning import coimbra_et_al_2025 as ptt
 from ..partitioning import schoendorf as pttET
 
@@ -643,7 +642,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
     for yl in tqdm.tqdm(ymd): # for yl in ymd:
         date = _date_from_yl(yl[0])
         
-        print(prev_print, 'Current chunk starting from', yl[0], 'to', yl[-1])
+        print(prev_print, 'Current chunk from', yl[0], 'to', yl[-1])
         
         # print(prev_print, date, 'reading', ' '*10, sep=' ', end='\n')
         #prev_print = '\x1B[1A\r'
