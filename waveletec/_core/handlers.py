@@ -49,7 +49,7 @@ from ..partitioning import coimbra_et_al_2025 as ptt
 from ..partitioning import schoendorf as pttET
 from .._extra import eddypro_tools as eddypro
 
-logger = logging.getLogger('wvlt.pipeline')
+logger = logging.getLogger('waveletec.handlers')
 
 
 # def sample_raw_data(input_path, datetimerange, acquisition_frequency=20, fileduration=30, **kwargs):
@@ -165,7 +165,7 @@ def condition_sampling_partition(site_name, output_folderpath,
     if (output_folderpath is not None) and newlog:
         hc24.start_logging(output_folderpath)
         
-    logger = logging.getLogger('wvlt.handler.condition_sampling_partition')
+    logger = logging.getLogger('waveletec.handlers.condition_sampling_partition')
     
     # to be able to have different integration_period = 1/f0, hence different high pass filters in the folder
     # search for the pattern with variable minutes
@@ -261,7 +261,7 @@ def condition_sampling_partition(site_name, output_folderpath,
 
 
 def integrate_cospectra(data, f0, dst_path=None):
-    logger = logging.getLogger('wvlt.pipeline.integrate_cospectra')
+    logger = logging.getLogger('waveletec.handlers.integrate_cospectra')
     logger.debug(f"Integrate cospectra with f0 = {f0}")
     
     data0 = data[(np.isnan(data['natural_frequency']) == False) * (data['natural_frequency'] >= f0)
@@ -295,7 +295,7 @@ def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_',
     """
     
     # use glob.glob to find files matching the pattern
-    logger = logging.getLogger('wvlt.pipeline.integrate_cospectra_from_file')
+    logger = logging.getLogger('waveletec.handlers.integrate_cospectra_from_file')
     logger.debug(f"Try to integrate cospectra from file in folder {root} with f0 = {f0}.")
     if isinstance(root, str):
         saved_files = {}
@@ -344,7 +344,7 @@ def integrate_full_spectra_into_file(site_name, output_folderpath,
     # activate new logging file? Useful if function is called on its own, e.g. outside of eddypro_wavelet_run and with time delay after the process().
     if (output_folderpath is not None) and newlog:
         hc24.start_logging(output_folderpath)
-    logger = logging.getLogger('wvlt.handler.integrate_full_spectra_into_file')
+    logger = logging.getLogger('waveletec.handlers.integrate_full_spectra_into_file')
     
     dst_path = os.path.join(output_folderpath + str(site_name) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
     
@@ -364,6 +364,8 @@ def decompose_variables(data, variables=['w', 'co2'], method='dwt',
     # dictionary of wavelet transforms
     φ = {'info_names': []}
     sj = None
+    
+    logger = logging.getLogger('waveletec.handlers.decompose_variables')
 
     # run by couple of variables (e.g.: co2*w -> mean(co2'w'))
     try:
@@ -417,7 +419,7 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt',
     Return:
         Pandas DataFrame with columns: TIMESTAMP, natural_frequency, the decomposed variables, and their quality control (_qc).
     """
-    logger = logging.getLogger('wvlt.pipeline.decompose_data')
+    logger = logging.getLogger('waveletec.handlers.decompose_data')
     assert method in [
         'dwt', 'cwt', 'fcwt'], "Method not found. Available methods are: dwt, cwt, fcwt"
     
@@ -539,7 +541,7 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt',
 
 
 def _calculate_product_from_formula_(data, formula='w*co2|w*h2o'):
-    logger = logging.getLogger('wvlt.pipeline._calculate_product_from_formula_')
+    logger = logging.getLogger('waveletec.handlers._calculate_product_from_formula_')
 
     φs = {}
     logger.debug(
@@ -589,7 +591,7 @@ def _calculate_conditional_sampling_from_formula_(data, formula='w*co2|w*h2o', c
     Return:
         pd.DataFrame(φc) (pandas.DataFrame): Dataframe containing the conditionally sampled data.
     """
-    logger = logging.getLogger('wvlt.pipeline._calculate_conditional_sampling_from_formula_')
+    logger = logging.getLogger('waveletec.handlers._calculate_conditional_sampling_from_formula_')
 
     logger.debug(f"\t\tformula: {formula}.")
     formulavar = formula_to_vars(formula) if isinstance(formula, str) else formula
@@ -623,7 +625,7 @@ def _calculate_conditional_sampling_from_formula_(data, formula='w*co2|w*h2o', c
 
 
 def __save_cospectra__(data, dst_path, overwrite=False, **meta):
-    logger = logging.getLogger('wvlt.pipeline.__save_cospectra__')
+    logger = logging.getLogger('decompose_variables.handlers.__save_cospectra__')
 
     # saved_files = []
 
@@ -691,7 +693,7 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
     # function to load output file from integrate_full_spectra_into_file() or process()
     # and, partitiones the data and save its results as well in a new file.
     # inside process file or inside handler?
-    logger = logging.getLogger('wvlt.pipeline.cs_partition_NEE_ET')
+    logger = logging.getLogger('decompose_variables.handlers.cs_partition_NEE_ET')
     # activate new logging file? Useful if function is called on its own, 
     # e.g. outside of eddypro_wavelet_run and with time delay after the process().
     if (output_folderpath is not None) and newlog:
@@ -785,7 +787,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         fulldata (pandas.DataFrame): Containing all processed data. If integration_period is specified already integrated.
     
     """
-    logger = logging.getLogger('wvlt.pipeline.process')
+    logger = logging.getLogger('waveletec.handlers.process')
     local_args = locals()
     
     info_t_start = time.time()
@@ -1031,7 +1033,7 @@ def main(data, varstorun, period=None, average_period='30min',
     Return:
         A new class object named var_ with class attributes data and saved. Data includes the averaged wavelet transformed, cross calculated variables. saved_files contains strings with paths to where the saved files are placed. If save return as test = main(), access data via test.data or test.saved.
     """
-    logger = logging.getLogger('wvlt.pipeline.main')
+    logger = logging.getLogger('waveletec.handlers.main')
     logger.info('In main.')
     logger.debug(f'Input data shape: {data.shape}.')
     info_t_main = time.time()

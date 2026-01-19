@@ -13,7 +13,7 @@ from ._extra import eddypro_tools as eddypro
 from ._core import handlers
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('waveletec.main')
 
 
 def set_cwd(workingdir=None):
@@ -23,6 +23,7 @@ def set_cwd(workingdir=None):
     Parameters:
     - workingdir: Path to the directory to set as current working directory.
     """
+    logger = logging.getLogger('waveletec.main.set_cwd')
     if workingdir is not None:
         os.chdir(workingdir)
         print(f"Current working directory set to: {os.getcwd()}")
@@ -145,6 +146,7 @@ def log_args(args):
 # 
 
 def __custom_params__(unknown_args):
+    logger = logging.getLogger('waveletec.main.__custom_params__')
     def convert_to_number(value):
         try:
             return int(value)
@@ -178,6 +180,7 @@ def __custom_params__(unknown_args):
 
 
 def eddypro_run():
+    logger = logging.getLogger('waveletec.main.eddypro_run')
     # waveletEC-eddypro_run -p "input/EP/FR-Gri_sample.eddypro" -o "output/wavelet_flux/" -d "20220513T0000-20220516T0000" --processing_time_duration 3H
     parser = argparse.ArgumentParser(description="Run wavelet-based edy covariance workflows.")     
     parser.add_argument('-p', '--path',   type=str,
@@ -218,6 +221,7 @@ def eddypro_run():
 
 
 def integrate():
+    logger = logging.getLogger('waveletec.main.integrate')
     parser = argparse.ArgumentParser(
         description="Run wavelet-based edy covariance workflows.")
     parser.add_argument('-f', '--folder', type=str,
@@ -254,6 +258,7 @@ def integrate():
     handlers.integrate_cospectra_from_file(**passed_args)
     
 def partition():
+    logger = logging.getLogger('waveletec.main.partition')
     parser = argparse.ArgumentParser(
         description="Run wavelet-based edy covariance workflows.")
     parser.add_argument('-f', '--folder', type=str,

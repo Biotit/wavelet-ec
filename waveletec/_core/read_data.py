@@ -148,7 +148,7 @@ class structuredDataFrame:
 
 
 def __universal_reader__(path, **kw_csv):
-    logger = logging.getLogger('wvlt.read_data.__universal_reader__')
+    logger = logging.getLogger('waveletec.read_data.__universal_reader__')
     
     handle_eddypro_raw_dataset = kw_csv.pop('handle_eddypro_raw_dataset', False)
     handle_bmmflux_raw_dataset = kw_csv.pop('handle_bmmflux_raw_dataset', False)
@@ -191,7 +191,7 @@ def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verb
     e.g. (dict): path = {k: str(os.path.join(v, 'eddypro_raw_datasets/level_6')) for k, v in inputpath.items()}
         where k will become the suffix in case of duplicates
     """
-    logger = logging.getLogger('wvlt.read_data.universal_reader')
+    logger = logging.getLogger('waveletec.read_data.universal_reader')
     
     
     if isinstance(path, dict):

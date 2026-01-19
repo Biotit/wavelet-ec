@@ -13,6 +13,7 @@ dependencies:
   - ipython
   - jupyter_client
   - jupyter_core
+  - jupyter
   - traitlets
   - comm
   - debugpy

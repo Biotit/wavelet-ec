@@ -53,7 +53,7 @@ except ImportError as e:
     fcwt = None
     pass
 
-logger = logging.getLogger('wvlt.wavelet_functions')
+logger = logging.getLogger('waveletec.wavelet_functions')
 
 
 def __wavemother_str_pycwt__(name):
@@ -67,7 +67,7 @@ def __wavemother_str_pycwt__(name):
 
 
 def bufferforfrequency_dwt(N=0, n_=None, fs=20, level=None, f0=None, max_iteration=10**4, wavelet='db6'):
-    logger = logging.getLogger('wvlt.wavelet_functions.bufferforfrequency_dwt')
+    logger = logging.getLogger('waveletec.wavelet_functions.bufferforfrequency_dwt')
     try:
         import pywt
     except Exception as e:
@@ -90,7 +90,7 @@ def bufferforfrequency_dwt(N=0, n_=None, fs=20, level=None, f0=None, max_iterati
 
 
 def bufferforfrequency(f0, dt=0.05, param=6, mother="MORLET", wavelet=None):
-    logger = logging.getLogger('wvlt.wavelet_functions.bufferforfrequency')
+    logger = logging.getLogger('waveletec.wavelet_functions.bufferforfrequency')
     try:
         import pywt
     except Exception as e:
@@ -273,7 +273,7 @@ def prepare_signal(signal, nan_tolerance=0.3, identifier='0000'):
          * N: len(signal)
          * Nnan: number of NAN
     """
-    logger = logging.getLogger('wvlt.wavelet_functions.prepare_signal')
+    logger = logging.getLogger('waveletec.wavelet_functions.prepare_signal')
     signal = np.array(signal)
     signan = np.isnan(signal)
     N = len(signal)
@@ -347,7 +347,7 @@ def universal_wt(signal, method='dwt', fs=20, f0=1/(3*60*60), f1=10, fn=180,
         A new class object named var_ with class attributes wave, sj, coi, method, fs, f0, f1, fn.
         Wave is the decomposed signal, sj the wavelet decomposition levels, coi is the cone of influence mask for the signal, the other arguments are the same as their corresponding input.
     """
-    logger = logging.getLogger('wvlt.wavelet_functions.universal_wt')
+    logger = logging.getLogger('waveletec.wavelet_functions.universal_wt')
     assert method in [
         'dwt', 'cwt', 'fcwt'], "Method not found. Available methods are: dwt, cwt, fcwt"
 
