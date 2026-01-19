@@ -455,14 +455,19 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt',
 
     logger.debug(f'\t\tDecompose all variables took {round(time.time() - info_t_startvarloop)} s.')
     
+    
+    info_t_parttime = time.time()
     φs_names = []
     # φs_names = [f'valid_{l}' if l else 'valid' for l in φ.sj]
     logger.debug(f'\t\tφ.info_names ({φ.info_names}).')
     for n in φ.info_names:
         if vars(φ)[n].shape[0] > 1:
-            for l in φ.sj:  # use '+ ['']' if __integrate_decomposedarrays_in_dictionary__
-                if l: φs_names += [f'{n}_{l}'] 
-                else: φs_names += [n] 
+            for j in φ.sj:  # use '+ ['']' if __integrate_decomposedarrays_in_dictionary__
+                   sj = 1/hc24.j2sj(j, 1/dt) if j else np.nan
+                   if j:
+                       φs_names += [(n, sj)]
+                   else:
+                       φs_names += [n] 
         else: φs_names += [n]
 
     logger.debug(f"\t\tvars(φ).keys(): {vars(φ).keys()}")
@@ -470,19 +475,26 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt',
 
     # transform 2D arrays to DataFrame
     values = [vars(φ)[n] for n in φ.info_names]
-    logger.debug(f'\t\tTransform 2D arrays to DataFrame with columns `{"`; `".join(φs_names)}`.')
+    
+    logger.debug(
+         f'\t\t\tφ.info_names took {round(time.time() - info_t_parttime)} s ({round(time.time() - info_t_startvarloop)} s).')
+    
+    
+    logger.debug(
+        f'\t\tTransform 2D arrays to DataFrame with columns ' 
+        f'`{"`; `".join(map(str, φs_names))}`.')
     logger.debug(f'\t\t{[np.array(v).shape for v in values]}.')
     
-    info_t_mattime = time.time()
+    info_t_parttime = time.time()
     __temp__ = hc24.matrixtotimetable(np.array(data.TIMESTAMP),
                                       np.concatenate(values, axis=0), columns=φs_names)
-    logger.debug(f'\t\t\tMatrix to timetable took {round(time.time() - info_t_mattime)} s.')
+    logger.debug(f'\t\t\tMatrix to timetable took {round(time.time() - info_t_parttime)} s ({round(time.time() - info_t_startvarloop)} s).')
     
     __temp__.set_index('TIMESTAMP', inplace=True)
-    if verbosity > 1: logger.debug(f'\t\tpd.MultiIndex.from_tuples: {[tuple(c.split("_")) for c in __temp__.columns]}.')
+    if verbosity > 1: logger.debug(f'\t\tpd.MultiIndex.from_tuples: {φs_names}.')
     
     if verbosity > 1: logger.debug(f'Calculating natural_frequency from scales for {__temp__.head()}.')
-    __temp__.columns = pd.MultiIndex.from_tuples([tuple(c.rsplit('_', 1)) for c in __temp__.columns])
+    __temp__.columns = pd.MultiIndex.from_tuples(φs_names)
     if verbosity > 1: logger.debug(f'Calculating natural_frequency from scales for MultiIndex {__temp__.head()}.')
     
     if memory_eff==False: # old processing: memory heavy, but fast
@@ -518,7 +530,9 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt',
     #pattern = re.compile(r"^(?P<variable>.+?)_?(?P<natural_frequency>(?<=_)\d+)?$")
     #__temp__ = __temp__.melt(['TIMESTAMP'] + φ.keys())
     #__temp__ = pd.concat([__temp__.pop('variable').str.extract(pattern, expand=True), __temp__], axis=1)
-    __temp_l__['natural_frequency'] = __temp_l__['natural_frequency'].apply(lambda j: 1/hc24.j2sj(j, 1/dt) if j else np.nan)
+    
+    
+    # __temp_l__['natural_frequency'] = __temp_l__['natural_frequency'].apply(lambda j: 1/hc24.j2sj(j, 1/dt) if j else np.nan) 
     if verbosity > 1: logger.debug(f'Calculating natural_frequency finished. Returning DataFrame {__temp_l__.head()}')
     logger.debug(f'\t\tDecompose data (full) took {round(time.time() - info_t_startvarloop)} s.')
     return __temp_l__
