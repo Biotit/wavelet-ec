@@ -52,7 +52,6 @@ import waveletec
 ```
 Then
 ```python
-import waveletec
 waveletec.process(datetimerange, fileduration, input_path, acquisition_frequency,
             covariance=None, cond_samp_both=False, output_folderpath=None,
             overwrite=False, processing_time_duration="1d",
@@ -89,7 +88,7 @@ The documentation of process is:
     Return:
         fulldata (pandas.DataFrame): Containing all processed data. If integration_period is specified already integrated.
     
-    """
+"""
 ```
 
 
@@ -115,7 +114,7 @@ With corresponding documentation:
         **kwargs
     Return:
         A new class object named var_ with class attributes data and saved. Data includes the averaged wavelet transformed, cross calculated variables. saved_files contains strings with paths to where the saved files are placed. If save return as test = main(), access data via test.data or test.saved.
-    """
+"""
 ```
 
 Further important functions are:
@@ -136,7 +135,7 @@ waveletec.integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9
         **kwargs
     Return:
         The integrated cospectrum. Also file saved accordingly.
-    """
+"""
 ```
 
 If no inside process no partition was specified:
@@ -159,7 +158,7 @@ waveletec.cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
         * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function condition_sampling_partition() is called on its own, e.g. outside of eddypro_wavelet_run() or with time delay after other functions.
     Return:
         dat (Pandas.DataFrame): Dataframe with the partitioned fluxes.
-    """
+"""
 
 ```
 
@@ -210,7 +209,7 @@ Prefer using ```waveletec.main```? No problem! Just pass the ```output_kwargs```
 
 1. Activate the high-frequency output inside bmmflux. These files will contain all necessary corrections.
 2. Run _waveletec_:\
-    Inside a script using the waveletec.process()-function, with the argument load_kwargs = {'handle_bmmflux_raw_dataset':True}.
+    Inside a script using the ```waveletec.process()``` function, with the argument ```load_kwargs = {'handle_bmmflux_raw_dataset':True}```.
     Example (example data not provided yet):
     ```python
     data = waveletec.process(datetimerange = '20250407T0805-20250410T0805',
