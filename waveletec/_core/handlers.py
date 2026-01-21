@@ -744,13 +744,16 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
                                         CO2neg_H2Oneg='wco2-wh2o-', NIGHT=None)\
                                     .filter(['TIMESTAMP', 'NEE', 'GPP', 'Reco'])
             list_dat.append(dat_part)
-            
+    
+    if not NEE and not ET:
+        logger.critical('Neither NEE nor ET was specified to partition. This does not work. Returning empty dataframe')
+        dat = pd.DataFrame()
+    
     if list_dat:
         dat = list_dat[0]
     for df in list_dat[1:]:
         dat = dat.merge(df, on="TIMESTAMP", how="outer")
     dat.to_file(os.path.join(output_folderpath, str(site_name)+'_CDWT_partitioning_NEE_ET.csv'), index=False)
-    
     return dat
 
 def process(datetimerange, fileduration, input_path, acquisition_frequency,
@@ -775,7 +778,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         * overwrite (bool, default False): if files can be overriden. If True, output files not get overriden and no calculation is performed for these data.
         * processing_time_duration (str, default "1d"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM. Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
         * integration_period (int, default None): integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
-        * partition (list, default None): Gives if ET or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this.
+        * partition (list, default None): Gives if ET and/or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this.
         * method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
         * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d. Passed to the main function.
         * sitename (str, default "00000"): Sitename, files get named accordingly.
@@ -853,6 +856,9 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         **kwargs.get("transform_kwargs", {}),
         **wt_kwargs
     }
+    
+    if output_folderpath and not output_folderpath.endswith(os.sep):
+        output_folderpath += os.sep
 
     output_kwargs = {
         'output_folderpath': output_folderpath,
@@ -978,6 +984,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
     logger.debug(f'End date loop at {round(time.time() - info_t_start)} s.')
     logger.debug(f"integration_period: {integration_period}.")
     logger.debug(f"output_pathmodel: {output_pathmodel}.")
+    logger.debug(f"output_folderpath: {output_folderpath}")
     logger.debug(f"fulldata: {fulldata.head()}.")
     if output_pathmodel and not fulldata.empty:
         
@@ -991,6 +998,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
             dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
             fulldata = integrate_cospectra(fulldata, 1/integration_period, dst_path=None)
         fulldata.to_csv(dst_path, index=False)
+        logger.debug(f'File with integrated fluxes saved as {dst_path}.')
         
         # Partitioning
         if partition:
@@ -998,8 +1006,12 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
                 print(f'\n Partitioning of integrated wavelet flux.')
                 if "NEE" in partition:
                     NEE = True
+                else:
+                    NEE = False
                 if "ET" in partition:
                     ET = True
+                else:
+                    ET = False
                 av_var = fulldata.columns
                 if not NEE and not ET:
                     logger.warning("Neiter ET nor NEE set to partition but wanted to partion. This is not possible.")

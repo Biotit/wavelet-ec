@@ -1,4 +1,4 @@
-version = "0.3.0.1.0-partNEE_ET"
+version = "0.3.0.1.0-NEE_ET-0.1.0"
 __version__ = version
 full_version = version
 

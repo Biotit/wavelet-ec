@@ -9,11 +9,12 @@ setup(
     url='https://github.com/pedrohenriquecoimbra/wavelete-ec',
     description=(
         "Wavelet-based Eddy Covariance "
-        "Written by pedrohenriquecoimbra"),
+        "Written by pedrohenriquecoimbra"
+        "Expanded by Daniel Schöndorf"),
     long_description=open('README.md').read(),
     long_description_content_type="text/markdown",
-    author='Pedro Henrique Coimbra',
-    author_email='pedro-henrique.herig-coimbra@inrae.fr',
+    author='Pedro Henrique Coimbra, Daniel Schöndorf',
+    author_email='Daniel.Schoendorf@uni-bayreuth.de',
     keywords="EC, partitionning, wavelet",
     license='MIT',
     platforms=['any'],
@@ -52,6 +53,7 @@ setup(
     entry_points={
         "console_scripts": [
             "waveletEC-eddypro_run=waveletec.main:eddypro_run",
+            "waveletEC-run=waveletec.main:bmmflux_eddypro_run",
             "waveletEC-partition=waveletec.main:partition",
             "waveletEC-integrate=waveletec.main:integrate",
             "waveletEC-exec=waveletec.main:exec",

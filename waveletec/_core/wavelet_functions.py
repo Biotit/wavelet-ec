@@ -326,7 +326,7 @@ def cone_of_influence_mask(sj, **kwargs):
 
     return coi
 
-def universal_wt(signal, method='dwt', fs=20, f0=1/(3*60*60), f1=10, fn=180, 
+def universal_wt(signal, method='dwt', fs=20, f0=1/(1*60*60), f1=10, fn=180, 
                  dj=1/12, wt=True, iwt=True, coi=True, **kwargs):
     """
     function: performs Continuous Wavelet Transform
@@ -335,7 +335,7 @@ def universal_wt(signal, method='dwt', fs=20, f0=1/(3*60*60), f1=10, fn=180,
         signal: 1D array
         method: 'dwt', 'cwt', 'fcwt' (cwt but uses fast algorithm)
         fs (int, default 20): sampling rate (Hz)
-        f0 (float, default 1/(3*60*60)): highest scale (becomes level for DWT)
+        f0 (float, default 1/(1*60*60)): highest scale (becomes level for DWT)
         f1 (int, default 10): lowest scale (2x sampling rate)
         fn (int, default 180): number of scales (only used for CWT)
         dj (float, default 1/12): frequency resolution (only used for CWT)
