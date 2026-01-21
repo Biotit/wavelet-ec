@@ -2,18 +2,16 @@
 
 WaveletEC is a Python module designed for processing and analyzing Eddy Covariance data using wavelet transforms. This module provides functionalities to handle EddyPro setup files, perform wavelet analysis, and integrate results.
 
-The module is forked from [Pedro H H Coimbra](https://github.com/pedrohenriquecoimbra/wavelet-ec) which was published in
-
-[![DOI](https://zenodo.org/badge/DOI/10.1016/j.agrformet.2025.110684.svg)](https://doi.org/10.1016/j.agrformet.2025.110684)
-
-[![DOI](https://zenodo.org/badge/786866970.svg)](https://zenodo.org/doi/10.5281/zenodo.11071327)
+The module is from [Pedro H H Coimbra](https://github.com/pedrohenriquecoimbra/wavelet-ec) published in
 
 Pedro H H Coimbra, Benjamin Loubet, Olivier Laurent, Matthias Mauder, Bernard Heinesch, Jonathan Bitton, Nicolas Delpierre, Daniel Berveiller, Jérémie Depuydt, Pauline Buysse. Evaluation of a novel approach to partitioning respiration and photosynthesis using eddy covariance, wavelets and conditional sampling. https://doi.org/10.1016/j.agrformet.2025.110684
 
 \* corresponding author: pedro-henrique.herig-coimbra@inrae.fr
+[![DOI](https://zenodo.org/badge/DOI/10.1016/j.agrformet.2025.110684.svg)](https://doi.org/10.1016/j.agrformet.2025.110684)
+[![DOI](https://zenodo.org/badge/786866970.svg)](https://zenodo.org/doi/10.5281/zenodo.11071327)
 
 ## Version NEE_ET
-This fork, developed by Daniel Schöndorf, contains some additions:
+This fork by Daniel Schöndorf contains some additions:
 - the possibility to partition ET in addition to NEE (in development)
 - reading bmmflux high-frequency corrected output files
 - the option to run a more memory-efficient but slower algorithm (in the code at the moment just acivated. Need to be changed in the code in ```decompose_data```, variable ```memory_eff=True```)
