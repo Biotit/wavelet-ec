@@ -625,7 +625,7 @@ def _calculate_conditional_sampling_from_formula_(data, formula='w*co2|w*h2o', c
 
 
 def __save_cospectra__(data, dst_path, overwrite=False, **meta):
-    logger = logging.getLogger('decompose_variables.handlers.__save_cospectra__')
+    logger = logging.getLogger('waveletec.handlers.__save_cospectra__')
 
     # saved_files = []
 
@@ -693,7 +693,7 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
     # function to load output file from integrate_full_spectra_into_file() or process()
     # and, partitiones the data and save its results as well in a new file.
     # inside process file or inside handler?
-    logger = logging.getLogger('decompose_variables.handlers.cs_partition_NEE_ET')
+    logger = logging.getLogger('waveletec.handlers.cs_partition_NEE_ET')
     # activate new logging file? Useful if function is called on its own, 
     # e.g. outside of eddypro_wavelet_run and with time delay after the process().
     if (output_folderpath is not None) and newlog:

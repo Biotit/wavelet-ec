@@ -335,6 +335,11 @@ TIMESTAMP,ET,T,E,Dew,NEE,GPP,Reco
 
 For an example follow the [demonstration.ipynb](https://github.com/pedrohenriquecoimbra/wavelet-ec/blob/main/sample/FR-Gri_20220514/demonstration.ipynb) and [example.ipynb](https://github.com/pedrohenriquecoimbra/wavelet-ec/blob/main/sample/FR-Gri_20220514/example.ipynb) files.
 
+## Flow chart
+
+A [flow chart](https://github.com/Biotit/wavelet-ec/tree/main/docs/waveletEC-flow.svg) containing the most important functions is given within the docs folder.
+
+
 ## License
 
 This project is licensed under the EU EUPL License. See the [LICENSE](LICENSE) file for details.
