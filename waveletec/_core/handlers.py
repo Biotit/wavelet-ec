@@ -644,8 +644,8 @@ def __save_cospectra__(data, dst_path, overwrite=False, **meta):
         header += f"TIMESTAMP_START = {meta.get('TIMESTAMP_START', min(data.TIMESTAMP))}\n"
         header += f"TIMESTAMP_END = {meta.get('TIMESTAMP_END', max(data.TIMESTAMP))}\n"
         header += f"N: {meta.get('N', len(data.TIMESTAMP))}\n"
-        header += f"TIME_BUFFER [min] = {meta.get('buffer', np.nan)/60}\n"
-        header += f"frequency [Hz]\n"
+        header += f"TIME_BUFFER (applied both in front and after) [min] = {meta.get('buffer', np.nan)/60}\n"
+        header += f"---\n"
         header += f"y-axis -> wavelet_reconstructed\n"
         header += f"mother_wavelet -> {meta.get('method', '')}\n"
         header += f"acquisition_frequency [Hz] = {1/meta.get('dt', np.nan)}\n"
@@ -916,6 +916,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         else bufferforfrequency(wt_kwargs.get("f0", 1/(3*60*60))) / 2
     )
     meta.update({'buffer': buffer})
+    logger.debug(f"meta in process before looping is {meta}")
     logger.debug(f"Buffer (s): {buffer}.")
     logger.info(f'Start date loop at {round(time.time() - info_t_start)} s (load_main).')
 
@@ -1048,6 +1049,7 @@ def main(data, varstorun, period=None, average_period='30min',
     logger = logging.getLogger('waveletec.handlers.main')
     logger.info('In main.')
     logger.debug(f'Input data shape: {data.shape}.')
+    logger.debug(f"meta at the start of main is {meta}")
     info_t_main = time.time()
 
     vars_unique = list(set([var for f in varstorun for var in formula_to_vars(f).uniquevars]))
@@ -1120,14 +1122,15 @@ def main(data, varstorun, period=None, average_period='30min',
 
     # average
     info_t_average = time.time()
+    logger.debug(f"meta is {meta}")
+    meta_d = {}
     for thisdate, thisdata in growingdata.groupby(growingdata['TIMESTAMP'].dt.floor(
             average_period)):
         thisdate_ = thisdate.strftime('%Y%m%d%H%M')
-        meta.update({thisdate_: meta})
-        meta[thisdate_].update({
+        meta_d[thisdate_] = { #**meta, -- gets combined later when calling __save_cospectra__
                     'TIMESTAMP_START': min(thisdata['TIMESTAMP']),
                     'TIMESTAMP_END': max(thisdata['TIMESTAMP']),
-                    'N': len(thisdata['TIMESTAMP'])})
+                    'N': len(thisdata['TIMESTAMP'])}
 
     growingdata['TIMESTAMP'] = growingdata['TIMESTAMP'].dt.floor(
         average_period)
@@ -1151,7 +1154,7 @@ def main(data, varstorun, period=None, average_period='30min',
             dst_path = output_kwargs.get('output_path').format(thisdate_)
             overwrite = output_kwargs.get('overwrite', False)
             logger.debug(f"\t\t\t... in {dst_path}.")
-            __save_cospectra__(thisdata, dst_path, overwrite, **meta[thisdate_])
+            __save_cospectra__(thisdata, dst_path, overwrite, **meta, **meta_d[thisdate_])
             saved_files += [dst_path]
         logger.debug(f'\tSaving data took {round(time.time() - info_t_save_cospectra)} s.')
 
