@@ -624,7 +624,7 @@ def _calculate_conditional_sampling_from_formula_(data, formula='w*co2|w*h2o', c
     return pd.DataFrame(φc)
 
 
-def __save_cospectra__(data, dst_path, overwrite=False, **meta):
+def __save_cospectra__(data, dst_path, overwrite=False, hf=False, **meta):
     logger = logging.getLogger('waveletec.handlers.__save_cospectra__')
 
     # saved_files = []
@@ -636,29 +636,49 @@ def __save_cospectra__(data, dst_path, overwrite=False, **meta):
     logger.debug(f'\t\tSaving {dst_path} with shape {data.shape}.')
     # if os.path.exists(dst_path): continue
     use_header = False
-
-    if overwrite or (not os.path.exists(dst_path)):
-        use_header = True
-        header  = "wavelet_based_(co)spectra\n"
-        header += f"--------------------------------------------------------------\n"
-        header += f"TIMESTAMP_START = {meta.get('TIMESTAMP_START', min(data.TIMESTAMP))}\n"
-        header += f"TIMESTAMP_END = {meta.get('TIMESTAMP_END', max(data.TIMESTAMP))}\n"
-        header += f"N: {meta.get('N', len(data.TIMESTAMP))}\n"
-        header += f"TIME_BUFFER (applied both in front and after) [min] = {meta.get('buffer', np.nan)/60}\n"
-        header += f"---\n"
-        header += f"y-axis -> wavelet_reconstructed\n"
-        header += f"mother_wavelet -> {meta.get('method', '')}\n"
-        header += f"acquisition_frequency [Hz] = {1/meta.get('dt', np.nan)}\n"
-        header += f"averaging_interval = {meta.get('averaging', '')}\n"
-        hc24.mkdirs(dst_path)
-        with open(dst_path, 'w+') as part: part.write(header)
-        # legitimate_to_write = 1
-        logger.debug(f'\t\tSaving header of DataFrame took {round(time.time() - info_t_startsaveloop)} s.')
+    
+    if hf: # header for high frequency output, no averaging_interval
+        if overwrite or (not os.path.exists(dst_path)):
+            use_header = True
+            header  = "wavelet_based_high_frequency_(co)spectra\n"
+            header += f"--------------------------------------------------------------\n"
+            header += f"TIMESTAMP_START = {meta.get('TIMESTAMP_START', min(data.TIMESTAMP))}\n"
+            header += f"TIMESTAMP_END = {meta.get('TIMESTAMP_END', max(data.TIMESTAMP))}\n"
+            header += f"N: {meta.get('N', len(data.TIMESTAMP))}\n"
+            header += f"TIME_BUFFER (applied both in front and after) [min] = {meta.get('buffer', np.nan)/60}\n"
+            header += f"---\n"
+            header += f"y-axis -> wavelet_reconstructed\n"
+            header += f"mother_wavelet -> {meta.get('method', '')}\n"
+            header += f"acquisition_frequency [Hz] = {1/meta.get('dt', np.nan)}\n"
+            header += f"---\n"
+            hc24.mkdirs(dst_path)
+            with open(dst_path, 'w+') as part: part.write(header)
+            # legitimate_to_write = 1
+            logger.debug(f'\t\tSaving header of DataFrame took {round(time.time() - info_t_startsaveloop)} s.')
+    else: # header for normal cospectra output
+        if overwrite or (not os.path.exists(dst_path)):
+            use_header = True
+            header  = "wavelet_based_(co)spectra\n"
+            header += f"--------------------------------------------------------------\n"
+            header += f"TIMESTAMP_START = {meta.get('TIMESTAMP_START', min(data.TIMESTAMP))}\n"
+            header += f"TIMESTAMP_END = {meta.get('TIMESTAMP_END', max(data.TIMESTAMP))}\n"
+            header += f"N: {meta.get('N', len(data.TIMESTAMP))}\n"
+            header += f"TIME_BUFFER (applied both in front and after) [min] = {meta.get('buffer', np.nan)/60}\n"
+            header += f"---\n"
+            header += f"y-axis -> wavelet_reconstructed\n"
+            header += f"mother_wavelet -> {meta.get('method', '')}\n"
+            header += f"acquisition_frequency [Hz] = {1/meta.get('dt', np.nan)}\n"
+            header += f"averaging_interval = {meta.get('averaging', '')}\n"
+            hc24.mkdirs(dst_path)
+            with open(dst_path, 'w+') as part: part.write(header)
+            # legitimate_to_write = 1
+            logger.debug(f'\t\tSaving header of DataFrame took {round(time.time() - info_t_startsaveloop)} s.')
         # saved_files.append(dst_path)
     
     # if not legitimate_to_write: continue
     
-    data.drop('TIMESTAMP', axis=1, inplace=True)
+    if not hf: # dont drop timestamp for high frequency output because several timestamps in same file.
+        data.drop('TIMESTAMP', axis=1, inplace=True)
     with open(dst_path, 'a+', newline='') as part:
         data.to_file(part, header=use_header, chunksize=500, index=False)
     logger.debug(f'\t\tSaving DataFrame took {round(time.time() - info_t_startsaveloop)} s.')
@@ -758,7 +778,7 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
 
 def process(datetimerange, fileduration, input_path, acquisition_frequency,
             covariance=None, cond_samp_both=False, output_folderpath=None,
-            overwrite=False, processing_time_duration="1d",
+            overwrite=False, high_frq_output=False, processing_time_duration="1d",
             integration_period=None, partition=None,
             method="dwt", average_period="30min", sitename="00000",
             wt_kwargs={}, meta={}, **kwargs):
@@ -776,6 +796,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         * cond_samp_both (bool, default True): If True both parts of the formula are conditionally sampled. If False, only the leading part of the formula is sampled. E.g. if False in case of 'w*co2|w*h2o', we get the output columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, stating wco2 being conditionally sampled e.g. for wco2+wh2o+ when wco2 is positiv AND wh2o is positive. If True, we get the output columns wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco2-wh2o-,wh2o+wco2+,wh2o+wco2-,wh2o-wco2+,wh2o-wco2-, hence, we get both, wco2 and wh2o conditionally sampled.
         * output_folderpath (str, default: None): path to the folder where the output is saved.
         * overwrite (bool, default False): if files can be overriden. If True, output files not get overriden and no calculation is performed for these data.
+        * high_frq_output (bool, default False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage.
         * processing_time_duration (str, default "1d"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM. Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
         * integration_period (int, default None): integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
         * partition (list, default None): Gives if ET and/or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this.
@@ -803,21 +824,23 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
             date = date[:12]
         return date
     
-    def _validate_run(date, yl, compare_start=True, compare_end=False):
+    def _validate_run(date, yl, output_pathmodel_int, curoutpath_inprog_int,
+                      compare_start=True, compare_end=False):
         # recheck if files exist and overwrite option
         # doesn't save time (maybe only save 5min)
-        file_name = os.path.basename(output_pathmodel.format(date))
+        file_name = os.path.basename(output_pathmodel_int.format(date))
+        # using compare_start all files with the same beginning are counted, processing time in the filename excluded
         part_name0 = file_name.rsplit('_', 1)[0] + '_' if compare_start else ''
         part_name1 = file_name.rsplit('.', 1)[-1] if compare_end else ''
         current_files = [p for p in os.listdir(os.path.dirname(
-            output_pathmodel)) if p.startswith(part_name0) and p.endswith(part_name1)]
+            output_pathmodel_int)) if p.startswith(part_name0) and p.endswith(part_name1)]
 
-        if not overwrite and current_files: #file_name in os.path.exists(output_pathmodel.format(date)):
+        if not overwrite and current_files: #file_name in os.path.exists(output_pathmodel_int.format(date)):
             logger.warning(
                 "UserWarning: Skipping, file already exists ({}).".format(date))
             return False
 
-        if hc24.checkifinprogress(curoutpath_inprog):
+        if hc24.checkifinprogress(curoutpath_inprog_int):
             return False
         return True
         
@@ -830,9 +853,9 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         logger.debug(f'\tLoading data took {round(time.time() - start_time)} s.')
         return data
     
-    def _exit():
-        if os.path.exists(curoutpath_inprog):
-            os.remove(curoutpath_inprog)
+    def _exit(curoutpath_inprog_int):
+        if os.path.exists(curoutpath_inprog_int):
+            os.remove(curoutpath_inprog_int)
 
     # Group parameters for each function
     load_kwargs = {
@@ -863,6 +886,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
     output_kwargs = {
         'output_folderpath': output_folderpath,
         'overwrite': overwrite,
+        'high_frq_output': high_frq_output,
         'meta': {'acquisition_frequency': acquisition_frequency},
         **kwargs.get("output_kwargs", {})
     }
@@ -875,6 +899,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
     output_path = ""
     output_pathmodel = ""
     curoutpath_inprog = ""
+    curoutpath_inprog_hf = ""
 
     # kwargs.update({'covariance': covariance,
     #           'processduration': processduration, })
@@ -887,7 +912,13 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         else:
             output_pathmodel = str(os.path.join(output_folderpath, 'wavelet_full_cospectra', str(
                 sitename)+'_CDWT_full_cospectra_{}_'+run_time+'.csv'))
-        hc24.mkdirs(output_pathmodel)
+            if high_frq_output: # output pathmodel for high-frequency output
+                output_pathmodel_hf = str(os.path.join(output_folderpath, 'wavelet_high_frq_cospectra', str(
+                    sitename)+'_CDWT_high_frq_cospectra_{}_'+run_time+'.csv'))
+                hc24.mkdirs(output_pathmodel_hf) # create separate folder high frequency output
+            else:
+                output_pathmodel_hf = None
+        hc24.mkdirs(output_pathmodel) # generate general folder for output
         try:
             hc24.save_locals(local_args, os.path.join(output_folderpath, f'log/setup_{run_time}.yml'))
         except Exception as e:
@@ -938,18 +969,33 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
             curoutpath_inprog = output_pathmodel.format(date).rsplit(".", 1)[
                 0] + ".inprogress"
             logger.debug(f'In progress file: {curoutpath_inprog}.')
-            if not _validate_run(date, yl):
+            if not _validate_run(date, yl, output_pathmodel, curoutpath_inprog):
                 continue
+            
+        if output_pathmodel_hf: # for high-frequency output validate run
+            # check if files already exist etc.
+            curoutpath_inprog_hf = output_pathmodel_hf.format(date).rsplit(".", 1)[
+                0] + ".inprogress"
+            logger.debug(f'In high-frequency progress file: {curoutpath_inprog_hf}.')
+            if not _validate_run(date, yl, output_pathmodel_hf, curoutpath_inprog_hf):
+                output_kwargs['high_frq_output'] = False
+                logger.warning("High frequency output file already exist. Deactivating high frequency output for this data chunk! Please make you know what you do.")
+        
         
         data = _load_data()
         if data is None:
-            _exit()
+            _exit(curoutpath_inprog)
+            if output_pathmodel_hf or high_frq_output:
+                _exit(curoutpath_inprog_hf)
             continue
         
 
         try:
             # main run
             output_path = output_pathmodel.format("{}")
+            if output_pathmodel_hf:
+                output_path_hf = output_pathmodel_hf.format("{}")
+                output_kwargs['output_path_hf'] = output_path_hf + '.part'
             # # run directly
             # output_kwargs.update({'output_path': output_path})
             # fulldata = main(data, period=[min(yl), max(yl)],
@@ -960,6 +1006,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
             allvars = transform_kwargs['varstorun']
             logger.debug(f"Allvars that get looped through: {allvars}")
             saved_files = []
+            saved_files_hf = [] # saved high frequency files
             for f in allvars:
                 f_transform_kwargs = transform_kwargs.copy()
                 f_transform_kwargs['varstorun'] = [f]
@@ -970,17 +1017,31 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
                               meta=meta,
                               output_kwargs=output_kwargs, **f_transform_kwargs)
                 saved_files.append(output.saved)
+                saved_files_hf.append(output.saved_hf) # saved high frequency files
                 fulldata = pd.concat([fulldata, output.data], axis=0)
-                
-            for f in [s for s_ in saved_files for s in s_]:
+            
+            # at the end of the chunk of data change file name to csv to make clear those are finished
+            for f in [s for s_ in saved_files for s in s_]: # normal output
+                if os.path.exists(f):
+                    os.rename(f, f.replace('.part', ''))
+            for f in [s for s_ in saved_files_hf for s in s_]: # and high frequency output
                 if os.path.exists(f):
                     os.rename(f, f.replace('.part', ''))
         except Exception as e:
             logger.critical(e)
             print(str(e))
+        
+        if output_pathmodel_hf and not output_kwargs['high_frq_output']:
+            # activate high frequency output again if deactivated because a file did already exist
+            output_kwargs['high_frq_output'] = True
+            logger.debug('Activating high frequency output again for the next loop if data does not exist there.')
+            
+            
         logger.debug(f'Date loop ({yl}) took {round(time.time() - info_t_yl_ymd)} s.')
 
-        _exit()
+        _exit(curoutpath_inprog)
+        if output_pathmodel_hf or high_frq_output:
+            _exit(curoutpath_inprog_hf)
     
     logger.debug(f'End date loop at {round(time.time() - info_t_start)} s.')
     logger.debug(f"integration_period: {integration_period}.")
@@ -1119,9 +1180,9 @@ def main(data, varstorun, period=None, average_period='30min',
     info_t_assemble_data = time.time()
     growingdata = pd.concat([growingdata, wvcsp], axis=1)
     logger.debug(f'\tAssemble data took {round(time.time() - info_t_assemble_data)} s.')
-
-    # average
-    info_t_average = time.time()
+    
+      
+    # Get metadata for saving
     logger.debug(f"meta is {meta}")
     meta_d = {}
     for thisdate, thisdata in growingdata.groupby(growingdata['TIMESTAMP'].dt.floor(
@@ -1131,14 +1192,48 @@ def main(data, varstorun, period=None, average_period='30min',
                     'TIMESTAMP_START': min(thisdata['TIMESTAMP']),
                     'TIMESTAMP_END': max(thisdata['TIMESTAMP']),
                     'N': len(thisdata['TIMESTAMP'])}
-
+    
+    
+    # high frequency output
+    logger.debug(f'High frequency growingdata {growingdata}')
+    saved_files_hf = []
+    if output_kwargs.get('high_frq_output'):
+        if output_kwargs.get('output_path_hf', None):
+            logger.debug(f"\tSaving high frequency data in {output_kwargs['output_path_hf']}.")
+            info_t_save_hf_cospectra = time.time()
+            # one output file for one averaging period, even though high frequency output
+            for thisdate, thisdata in growingdata.groupby(growingdata['TIMESTAMP'].dt.floor(
+                    average_period)):
+                # save in wide format at the moment, 
+                # could include the following lines for long format but takes far longer and more space
+                #__ID_COLS__ = [
+                #    c for c in ['TIMESTAMP', 'natural_frequency']
+                #    if c in growingdata.columns
+                #]
+                #thisdata = thisdata.melt(__ID_COLS__)
+                thisdate_ = thisdate.strftime('%Y%m%d%H%M')
+                dst_path = output_kwargs.get('output_path_hf').format(thisdate_)
+                overwrite = output_kwargs.get('overwrite', False)
+                logger.debug(f"\t\t\t... in {dst_path}.")
+                __save_cospectra__(thisdata, dst_path, overwrite, 
+                                   hf = True,
+                                   **meta, **meta_d[thisdate_])
+                saved_files_hf += [dst_path]
+            logger.debug(f'\tSaving high frequency data took {round(time.time() - info_t_save_hf_cospectra)} s.')
+        else:
+            logger.error("Specified high frequency output but not provided high frequency output path (output_path_hf).")
+    
+    # average
+    info_t_average = time.time()
     growingdata['TIMESTAMP'] = growingdata['TIMESTAMP'].dt.floor(
         average_period)
-    __ID_COLS__ = list(
-        set(['TIMESTAMP', 'natural_frequency']) & set(growingdata.columns))
+    __ID_COLS__ = [
+        c for c in ['TIMESTAMP', 'natural_frequency']
+        if c in growingdata.columns
+    ]
     growingdata = growingdata.groupby(__ID_COLS__).agg(
         "mean").reset_index(drop=False)
-    logger.debug(f'\tAveraging data took {round(time.time() - info_t_average)} s.')
+    logger.debug(f'\tAveraging data and took {round(time.time() - info_t_average)} s.')
 
 
     # save in dataframe and .csv
@@ -1165,7 +1260,8 @@ def main(data, varstorun, period=None, average_period='30min',
     
     logger.debug(f'\tMain took {round(time.time() - info_t_main)} s.')
     # save in .nc
-    return type('var_', (object,), {'data': growingdata, 'saved': saved_files})
+    return type('var_', (object,), {'data': growingdata, 'saved': saved_files, 
+                                    'saved_hf':saved_files_hf})
 
 
 
