@@ -694,7 +694,7 @@ def __save_cospectra__(data, dst_path, overwrite=False, hf=False, **meta):
     return
 
 def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True, 
-    integration_period=None, 
+    integration_period=None, run_time=None,
     variables_available=['h2o', 'wh2o+wco2-', 'wh2o-wco2-', 'wh2o-wco2+', 'wh2o+wco2+', 'co2', 'wco2-wh2o+', 'wco2-wh2o-'], 
         newlog=False):
     """
@@ -704,7 +704,8 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
         * output_folderpath (str): Path to folder where the input and output files files are saved. Inside this folder there has to be a file with the pattern os.path.join(output_folderpath, f"{site_name}_CDWT_fulldata_integrated_*min.csv"). Usually produced by integrate_full_spectra_into_file() or by process().
         * NEE (bool, default True): If True, NEE is partitioned.
         * ET (bool, default True): If True, ET is partitioned.
-        * integration_period (int, default None): If different files with different integration_period inside the output_folderpath, this helps to find the correct file for conditional sampling. In those functions it is the integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). Also relevant for the filename of saved data. It gets constructed similar to os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O.csv' dependent on the used partitioning algorithm.
+        * integration_period (int, default None): For filename. And: If also run_time specified, if different files with different integration_period inside the output_folderpath, this helps to find the correct file for partitioning. In those functions it is the integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). Also relevant for the filename of saved data. It gets constructed similar to os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O.csv' dependent on the used partitioning algorithm.
+        * run_time (str, default None): For filename. And: If also integration_period specified, if different files with different run_times (e.g. from process function) inside the output_folderpath, this helps to find the correct file for partitioning.
         * variables_available (list, default ['h2o', 'wh2o+wco2-', 'wh2o-wco2-', 'wh2o-wco2+', 'wh2o+wco2+', 'co2', 'wco2-wh2o+', 'wco2-wh2o-']): From which variables are data available. Necessary to test, if partitioning algorithms can be run.
         * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function condition_sampling_partition() is called on its own, e.g. outside of eddypro_wavelet_run() or with time delay after other functions.
     Return:
@@ -721,8 +722,12 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
         
     # to be able to have different integration_period = 1/f0, hence different high pass filters in the folder
     # search for the pattern with variable minutes
-    if not integration_period:
-        pattern = os.path.join(output_folderpath, f"{site_name}_CDWT_fulldata_integrated_*min.csv")
+    if integration_period and run_time:
+        dst_path = os.path.join(output_folderpath + str(site_name) + f"_CDWT_fulldata_integrated_{integration_period//60}min_{run_time}" + ".csv")
+        logger.debug(f"Specified integration_period={integration_period} and run_time={run_time}. Hence taking the file {dst_path}")
+    else:
+        logger.debug(f"Either not specified integration_period or run_time, taking any file now.")
+        pattern = os.path.join(output_folderpath, f"{site_name}_CDWT_fulldata_integrated_*min*.csv")
         matches = glob.glob(pattern)
         if not matches:
             raise FileNotFoundError(f"No file found matching {pattern}")
@@ -730,9 +735,6 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
             logger.warning(f"Multiple files of integrated cospectra found: {matches}, taking the first one for partitioning! Set integration_period if want to use another one.")
         dst_path = matches[0]
         logger.info(f'Taking the file {dst_path} for partitioning.')
-    else:
-        dst_path = os.path.join(output_folderpath + str(site_name) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
-        logger.debug(f"Specified integration_period={integration_period}. Hence taking the file {dst_path}")
     
     list_dat = []
     
@@ -773,7 +775,21 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
         dat = list_dat[0]
     for df in list_dat[1:]:
         dat = dat.merge(df, on="TIMESTAMP", how="outer")
-    dat.to_file(os.path.join(output_folderpath, str(site_name)+'_CDWT_partitioning_NEE_ET.csv'), index=False)
+    
+    integration_str = (
+        f"_{integration_period//60}min"
+        if integration_period is not None
+        else ""
+    )
+
+    run_time_str = (
+        str("_" + run_time)
+        if run_time is not None
+        else ""
+    )
+    
+    dat.to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_NEE_ET{integration_str}{run_time_str}.csv'), index=False)
+    
     return dat
 
 def process(datetimerange, fileduration, input_path, acquisition_frequency,
@@ -803,9 +819,16 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         * method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
         * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d. Passed to the main function.
         * sitename (str, default "00000"): Sitename, files get named accordingly.
-        * wt_kwargs (dict, default {}): **kwargs passed to the wavelet tranformation itself. Can e.g. include wavelet specification. See wavelet_function.py for more details. Important setting include f0, which is the lowest frequency for wavelet decomposition. Because adding buffer is necessary to prevent edge effects, a lower f0 drastically increases the amount of data loaded in and the memory usage.
+        * wt_kwargs (dict, default {}): **kwargs passed to the wavelet tranformation itself. Can e.g. include wavelet specification. See wavelet_function.py for more details. Important setting include f0, which is the lowest frequency for wavelet decomposition. Because adding buffer is necessary to prevent edge effects, a lower f0 drastically increases the amount of data loaded in and the memory usage. Specify e.g. as wt_kwargs = {'f0':(1/(1*60*60))}
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
-        **kwargs
+        **kwargs: Further arguments can be passed as kwargs. Pass e.g. as load_kwargs = {'handle_bmmflux_raw_dataset':True}. Important settings include:
+        * output_kwargs:
+            * save_big_file (bool, default False): Should ONE file be saved containing all cospectra, additionally to the files in the wavelet_full_cospectra folder
+            * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
+        * load_kwargs:
+            * handle_bmmflux_raw_dataset (bool, default False): Was bmmflux used for pre-processing?
+        * transform_kwargs:
+            * memory_eff (bool, default True): If False, fast but memory-heavy algorithm is used to combine all decomposed data. Otherwise memory-light but slow algorithm is used.
         
     Return:
         fulldata (pandas.DataFrame): Containing all processed data. If integration_period is specified already integrated.
@@ -964,22 +987,49 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         
         # print(prev_print, date, 'reading', ' '*10, sep=' ', end='\n')
         #prev_print = '\x1B[1A\r'
-
+        
+        # check runs
         if output_pathmodel:
             curoutpath_inprog = output_pathmodel.format(date).rsplit(".", 1)[
                 0] + ".inprogress"
             logger.debug(f'In progress file: {curoutpath_inprog}.')
-            if not _validate_run(date, yl, output_pathmodel, curoutpath_inprog):
-                continue
-            
-        if output_pathmodel_hf: # for high-frequency output validate run
-            # check if files already exist etc.
+        
+        if output_pathmodel_hf:
             curoutpath_inprog_hf = output_pathmodel_hf.format(date).rsplit(".", 1)[
                 0] + ".inprogress"
             logger.debug(f'In high-frequency progress file: {curoutpath_inprog_hf}.')
-            if not _validate_run(date, yl, output_pathmodel_hf, curoutpath_inprog_hf):
-                output_kwargs['high_frq_output'] = False
-                logger.warning("High frequency output file already exist. Deactivating high frequency output for this data chunk! Please make you know what you do.")
+            
+        ok_output = (
+            _validate_run(date, yl, output_pathmodel, curoutpath_inprog)
+            if output_pathmodel else False
+            )
+        ok_output_hf = (
+            _validate_run(date, yl, output_pathmodel_hf, curoutpath_inprog_hf)
+            if output_pathmodel_hf else False
+            )
+        if output_pathmodel and output_pathmodel_hf and not ok_output and not ok_output_hf:
+            logger.warning(
+                "Output and high-frequency output already exist. "
+                "Skipping this data chunk."
+                )
+            continue
+        
+        # selectively disable outputs
+        output_kwargs_yl = output_kwargs.copy()
+        if output_pathmodel and not ok_output:
+            if not output_pathmodel_hf:
+                logger.warning('Output already exists. Skipping this data chunk.')
+                continue
+            output_kwargs_yl['output'] = False
+            logger.warning(
+                "Output already exists. Disabling normal output for this chunk."
+                )
+
+        if output_pathmodel_hf and not ok_output_hf:
+            output_kwargs_yl['high_frq_output'] = False
+            logger.warning(
+                "High-frequency output already exists. Disabling high frequency output for this chunk."
+                )
         
         
         data = _load_data()
@@ -995,14 +1045,14 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
             output_path = output_pathmodel.format("{}")
             if output_pathmodel_hf:
                 output_path_hf = output_pathmodel_hf.format("{}")
-                output_kwargs['output_path_hf'] = output_path_hf + '.part'
+                output_kwargs_yl['output_path_hf'] = output_path_hf + '.part'
             # # run directly
-            # output_kwargs.update({'output_path': output_path})
+            # output_kwargs_yl.update({'output_path': output_path})
             # fulldata = main(data, period=[min(yl), max(yl)],
-            #                 output_kwargs=output_kwargs, **transform_kwargs)
+            #                 output_kwargs=output_kwargs_yl, **transform_kwargs)
             
             # run by varstorun
-            output_kwargs.update({'output_path': output_path + '.part'})
+            output_kwargs_yl.update({'output_path': output_path + '.part'})
             allvars = transform_kwargs['varstorun']
             logger.debug(f"Allvars that get looped through: {allvars}")
             saved_files = []
@@ -1015,7 +1065,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
                 output = main(data, period=[min(yl), max(yl)], 
                               cond_samp_both=cond_samp_both,
                               meta=meta,
-                              output_kwargs=output_kwargs, **f_transform_kwargs)
+                              output_kwargs=output_kwargs_yl, **f_transform_kwargs)
                 saved_files.append(output.saved)
                 saved_files_hf.append(output.saved_hf) # saved high frequency files
                 fulldata = pd.concat([fulldata, output.data], axis=0)
@@ -1030,11 +1080,6 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         except Exception as e:
             logger.critical(e)
             print(str(e))
-        
-        if output_pathmodel_hf and not output_kwargs['high_frq_output']:
-            # activate high frequency output again if deactivated because a file did already exist
-            output_kwargs['high_frq_output'] = True
-            logger.debug('Activating high frequency output again for the next loop if data does not exist there.')
             
             
         logger.debug(f'Date loop ({yl}) took {round(time.time() - info_t_yl_ymd)} s.')
@@ -1053,15 +1098,32 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         # Integrating
         #dst_path = os.path.join(output_folderpath, os.path.basename(
         #    output_pathmodel.format(run_time)))
-        dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata" + ".csv")
+        
+        if output_kwargs.get('save_big_file', False):
+            dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata_" + run_time + ".csv")
+            # save all data in one big file?
+            fulldata.to_csv(dst_path, index=False)
+            
         if integration_period:
             print(f'\n \n Integration of all frequencies until a period of {integration_period} s.')
             logger.debug(f'Running Integration of wavelet flux with {integration_period}')
-            dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata_integrated_{integration_period//60}min" + ".csv")
-            fulldata = integrate_cospectra(fulldata, 1/integration_period, dst_path=None)
-        fulldata.to_csv(dst_path, index=False)
-        logger.debug(f'File with integrated fluxes saved as {dst_path}.')
-        
+            dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata_integrated_{integration_period//60}min_" + run_time +".csv")
+            
+            # integrate all files or only recent data?
+            if output_kwargs.get('integrate_all_files', True):
+                # also integrate older files also saved in the same wavelet_full_cospectra folder
+                fulldata = integrate_cospectra_from_file(
+                    root=os.path.join(output_folderpath, 'wavelet_full_cospectra/'), 
+                    f0=1/integration_period,
+                    dst_path=dst_path
+                    )
+                logger.debug(f'File with all integrated fluxes saved as {dst_path}.')
+            else:
+                # only integrate those data recently processed
+                fulldata = integrate_cospectra(fulldata, 1/integration_period, dst_path=dst_path)
+                logger.debug(f'File with integrated fluxes saved as {dst_path}.')
+
+            
         # Partitioning
         if partition:
             if integration_period:
@@ -1084,6 +1146,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
                                         NEE=NEE,
                                         ET=ET,
                                         integration_period=integration_period,
+                                        run_time=run_time,
                                         variables_available=av_var)
             else:
                 logger.warning("Integration period not set but wanted to partion. This is not possible.")
@@ -1241,7 +1304,8 @@ def main(data, varstorun, period=None, average_period='30min',
                 .melt(__ID_COLS__))
     
     saved_files = []
-    if output_kwargs.get('output_path', None):
+    if output_kwargs.get('output_path', None) and output_kwargs.get('output', True):
+        # We have an output path, and output is enabled (explicitly or by default)
         logger.debug(f"\tSaving data in {output_kwargs['output_path']}.")
         info_t_save_cospectra = time.time()
         for thisdate, thisdata in growingdata.groupby(growingdata.TIMESTAMP):
