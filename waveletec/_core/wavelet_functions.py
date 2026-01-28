@@ -5,7 +5,7 @@ This script is a key part of the following publications:
     Wavelet-Based Eddy Covariance: A New Method for Partitioning Respiration and Photosynthesis. 
     Available at SSRN: https://ssrn.com/abstract=4642939 or http://dx.doi.org/10.2139/ssrn.4642939
 
-Modified by Daniel Schöndorf.
+Modified by Daniel Schöndorf, University of Bayreuth.
 
 Main function:
 - universal_wt

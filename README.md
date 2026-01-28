@@ -14,6 +14,7 @@ Pedro H H Coimbra, Benjamin Loubet, Olivier Laurent, Matthias Mauder, Bernard He
 This fork by Daniel Schöndorf contains some additions:
 - the possibility to partition ET in addition to NEE (in development)
 - reading bmmflux high-frequency corrected output files
+- save high-frequency output to files automatically
 - the option to run a more memory-efficient but slower algorithm (in the code at the moment just acivated. Need to be changed in the code in ```decompose_data```, variable ```memory_eff=True```)
 - some minor bug fixes
 - additional documentation about several functions
@@ -73,20 +74,28 @@ The documentation of process is:
         * cond_samp_both (bool, default True): If True both parts of the formula are conditionally sampled. If False, only the leading part of the formula is sampled. E.g. if False in case of 'w*co2|w*h2o', we get the output columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, stating wco2 being conditionally sampled e.g. for wco2+wh2o+ when wco2 is positiv AND wh2o is positive. If True, we get the output columns wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco2-wh2o-,wh2o+wco2+,wh2o+wco2-,wh2o-wco2+,wh2o-wco2-, hence, we get both, wco2 and wh2o conditionally sampled.
         * output_folderpath (str, default: None): path to the folder where the output is saved.
         * overwrite (bool, default False): if files can be overriden. If True, output files not get overriden and no calculation is performed for these data.
+        * high_frq_output (bool, default False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage.
         * processing_time_duration (str, default "1d"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM. Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
         * integration_period (int, default None): integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
         * partition (list, default None): Gives if ET and/or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this.
         * method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
         * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d. Passed to the main function.
         * sitename (str, default "00000"): Sitename, files get named accordingly.
-        * wt_kwargs (dict, default {}): **kwargs passed to the wavelet tranformation itself. Can e.g. include wavelet specification. See wavelet_function.py for more details. Important setting include f0, which is the lowest frequency for wavelet decomposition. Because adding buffer is necessary to prevent edge effects, a lower f0 drastically increases the amount of data loaded in and the memory usage.
+        * wt_kwargs (dict, default {}): **kwargs passed to the wavelet tranformation itself. Can e.g. include wavelet specification. See wavelet_function.py for more details. Important setting include f0, which is the lowest frequency for wavelet decomposition. Because adding buffer is necessary to prevent edge effects, a lower f0 drastically increases the amount of data loaded in and the memory usage. Specify e.g. as wt_kwargs = {'f0':(1/(1*60*60))}
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
-        **kwargs
+        **kwargs: Further arguments can be passed as kwargs. Pass e.g. as load_kwargs = {'handle_bmmflux_raw_dataset':True}. Important settings include:
+        * output_kwargs:
+            * save_big_file (bool, default False): Should ONE file be saved containing all cospectra, additionally to the files in the wavelet_full_cospectra folder
+            * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
+        * load_kwargs:
+            * handle_bmmflux_raw_dataset (bool, default False): Was bmmflux used for pre-processing?
+        * transform_kwargs:
+            * memory_eff (bool, default True): If False, fast but memory-heavy algorithm is used to combine all decomposed data. Otherwise memory-light but slow algorithm is used.
         
     Return:
         fulldata (pandas.DataFrame): Containing all processed data. If integration_period is specified already integrated.
     
-"""
+    """
 ```
 
 
@@ -151,7 +160,8 @@ waveletec.cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
         * output_folderpath (str): Path to folder where the input and output files files are saved. Inside this folder there has to be a file with the pattern os.path.join(output_folderpath, f"{site_name}_CDWT_fulldata_integrated_*min.csv"). Usually produced by integrate_full_spectra_into_file() or by process().
         * NEE (bool, default True): If True, NEE is partitioned.
         * ET (bool, default True): If True, ET is partitioned.
-        * integration_period (int, default None): If different files with different integration_period inside the output_folderpath, this helps to find the correct file for conditional sampling. In those functions it is the integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). Also relevant for the filename of saved data. It gets constructed similar to os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O.csv' dependent on the used partitioning algorithm.
+        * integration_period (int, default None): For filename. And: If also run_time specified, if different files with different integration_period inside the output_folderpath, this helps to find the correct file for partitioning. In those functions it is the integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). Also relevant for the filename of saved data. It gets constructed similar to os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O.csv' dependent on the used partitioning algorithm.
+        * run_time (str, default None): For filename. And: If also integration_period specified, if different files with different run_times (e.g. from process function) inside the output_folderpath, this helps to find the correct file for partitioning.
         * variables_available (list, default ['h2o', 'wh2o+wco2-', 'wh2o-wco2-', 'wh2o-wco2+', 'wh2o+wco2+', 'co2', 'wco2-wh2o+', 'wco2-wh2o-']): From which variables are data available. Necessary to test, if partitioning algorithms can be run.
         * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function condition_sampling_partition() is called on its own, e.g. outside of eddypro_wavelet_run() or with time delay after other functions.
     Return:
@@ -230,6 +240,15 @@ Prefer using ```waveletec.main```? No problem! Just pass the ```output_kwargs```
     This will by default run wavelet decomposition, conditional sampling, integrating using a high-pass filter and partition NEE and ET.
 
 
+### Activating high frequency output
+With the argument ```high_frq_output``` in the process function it is possible to activate high frequency output of the wavelet decomposed (co)spectra.
+Those get saved in the folder ```wavelet_high_frq_cospectra```.
+Please only use this option with caution because it costs a lot computation time and disk storage.
+The output is similar to the output of the integrated spectra (see below).
+
+The program will run and write the high frequency output, even if there is already a integrated spectra output, which will not be overriden automatically.
+
+
 ### Using the command line / terminal
 
 After installing the package using e.g ```pip install waveletec```, 
@@ -243,10 +262,14 @@ waveletEC-integrate
 
 ```
 using ```--help``` it is possible to see an overview of all possible options to
-specifiy the commands. Those are similar to the ones when running 
+specifiy the commands. 
+Run enables running bmmflux or eddypro input files.
+The functions arguments are similar to the ones when running 
 manually in a script the functions
 ```run_from_eddypro```, ```process```, ```integrate_cospectra_from_file```, 
 ```cs_partition_NEE_ET```, respectively.
+
+Please consider using the functions directly (e.g. via a script) when you want to make use of all the possible arguments of the functions.
 
 
 

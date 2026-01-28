@@ -75,6 +75,8 @@ def parse_args():
         # parser.add_argument('-db', '--deadband', type=str, nargs='+')
         p.add_argument('-cov', '--covariance', type=str, nargs='+',
                             help='List of covariances to compute (default: None)')
+        p.add_argument('--high_frq_output', type=bool, default=False,
+                            help='If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage. (default: False)')
         p.add_argument('--cs_both', type=bool, default=False, 
                            help='If True both parts of the covariances formulas are conditionally sampled. If False, only the leading part of the formula is sampled. (default: False)')
         p.add_argument('--method', type=str, default='dwt', choices=['cov', 'dwt', 'cwt'],
