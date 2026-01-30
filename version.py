@@ -1,6 +1,0 @@
-version = "0.3.0.1.0-NEE_ET-0.1.0"
-__version__ = version
-full_version = version
-
-release = 'dev' not in version and '+' not in version
-short_version = version.split("+")[0]

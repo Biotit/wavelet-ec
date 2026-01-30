@@ -29,16 +29,29 @@ To install the WaveletEC module, clone the repository and install the required d
 git clone https://github.com/Biotit/wavelet-ec
 cd waveletec
 ```
-(Optional) Using conda to run savely in environment use:
+
+
+(Optional) Using conda to run savely in environment, create a new environment just with pip and then install WaveletEC:
+ ```
+ conda create -n wavec pip
+ conda activate wavec
+ ```
+ 
+Inside the folder where this README.md is located (hence, where the pyproject.toml is).
+```bash
+python -m pip install .
+```
+
+### For development and for managing all packages with conda
+
+(Optional) Using conda in the pre-devined environment I used:
  ```
  conda create -f conda/environment.yml
  conda activate wavec2
  ```
- 
-Inside the folder setup.py:
-```bash
-pip install
-```
+If you want you can then also install WaveletEC in there or just run from script.
+For running from script without installation, the working directory just needs to be where above the folder waveletec (hence where this README.md is located).
+Then its possible to just write  ```import waveletec``` in the python script.
 
 
 ## Usage
@@ -145,7 +158,7 @@ waveletec.integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9
 """
 ```
 
-If no inside process no partition was specified:
+If inside process no partition was specified:
 ```python
 import waveletec
 
