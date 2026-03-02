@@ -264,7 +264,7 @@ def prepare_signal(signal, nan_tolerance=0.3, identifier='0000'):
     call: prepare_signal()
     Input:
         * signal (pandas.Series, list, numpy.array): Signal of data to be prepared.
-        * nan_tolerance (float, default 0.3): Proportion or absolute value of NAN values allowed within the data. Passed to prepare_signal(). If too much NAN, warning gets called. Otherwise NAN get linear interpolated.
+        * nan_tolerance (float, default 0.3): Proportion or absolute value of NAN values allowed within the data. Passed to prepare_signal(). If too much NAN, warning gets called, but still gets linear interpolated.
         * identifier (str, default '0000'): Only used in printing warning logger output if too many NAN.
     Return:
          A new class object named var_ with class attributes signal, signan, N, and Nnan. If less NAN than nan_tolerance, 

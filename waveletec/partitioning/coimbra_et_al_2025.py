@@ -44,6 +44,9 @@ def conditional_sampling(Y12, *args, names=['xy', 'a'], label={1: "+", -1: "-"},
             # xy[xy==0] = false
             mask = np.where(mask == 0, false, mask)
             Ys[name] = Ys[name] * mask
+            
+            nan_mask = np.isnan(Ys[name]) | np.isnan(YS[i]) # set conditional sampled flux NaN if any of the input fluxes was NaN
+            Ys[name][nan_mask] = np.nan
     
     return Ys
     # Ys['info_vars'] = list(Ys.keys())

@@ -14,8 +14,9 @@ Pedro H H Coimbra, Benjamin Loubet, Olivier Laurent, Matthias Mauder, Bernard He
 This fork by Daniel Schöndorf contains some additions:
 - the possibility to partition ET in addition to NEE (in development)
 - reading bmmflux high-frequency corrected output files
-- save high-frequency output to files automatically
-- the option to run a more memory-efficient but slower algorithm (in the code at the moment just acivated. Need to be changed in the code in ```decompose_data```, variable ```memory_eff=True```)
+- save high-frequency output to files automatically (```high_frq_output=True```)
+- setting an NaN threshold (```nan_tolerance```), for which no output is created per averaging time (```transform_kwargs = {'nan_tolerance':0.1}```).
+- the option to run a more memory-efficient but slower algorithm (```transform_kwargs = {'memory_eff':True}```), default True at the moment.
 - some minor bug fixes
 - additional documentation about several functions
 
@@ -103,6 +104,7 @@ The documentation of process is:
         * load_kwargs:
             * handle_bmmflux_raw_dataset (bool, default False): Was bmmflux used for pre-processing?
         * transform_kwargs:
+            * nan_tolerance (float, default .1): Specify amount of NaN values allowed inside the average_period. If more, the respective variable get set NaN for this average_period, also in the high frequency output. To output all data set to 1. Additionally, warning is called if more NaN than nan_tolerance in the whole processed data.
             * memory_eff (bool, default True): If False, fast but memory-heavy algorithm is used to combine all decomposed data. Otherwise memory-light but slow algorithm is used.
         
     Return:
@@ -129,12 +131,13 @@ With corresponding documentation:
         * varstorun (list): variables to be considered in the calculations as strings in a list. * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]
         * period (list, default None): List with two entries. Decomposed signal only used for data['TIMESTAMP'] > period[0]) & data['TIMESTAMP'] < period[1].
         * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d.
+        * nan_tolerance (float, default 0.1): Specify amount of NaN values allowed inside the average_period. If more, the respective variable get set NaN for this average_period, also in the high frequency output. To output all data set to 1. Additionally, warning is called if more NaN than nan_tolerance in the whole processed data.
         * output_kwargs (dict, default {}): Specify output variables. For saving the data, output_path needs to be set as string containing an element {0} to paste the data in, e.g. output_kwargs={'output_path':'../test_outputs/test_{0}.csv'}. Possible further specification is overwrite (bool) specifiying if files can get overwritten.
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs
     Return:
         A new class object named var_ with class attributes data and saved. Data includes the averaged wavelet transformed, cross calculated variables. saved_files contains strings with paths to where the saved files are placed. If save return as test = main(), access data via test.data or test.saved.
-"""
+    """
 ```
 
 Further important functions are:

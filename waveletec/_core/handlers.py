@@ -197,7 +197,7 @@ def condition_sampling_partition(site_name, output_folderpath,
                                         CO2neg_H2Opos='wco2-wh2o+', 
                                         CO2neg_H2Oneg='wco2-wh2o-', NIGHT=None)\
                                     .filter(['TIMESTAMP', 'NEE', 'GPP', 'Reco'])\
-                                    .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O.csv'), index=False)
+                                    .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O.csv'), index=False, na_rep="NaN")
         except Exception as e:
             logger.warning(str(e))
     
@@ -217,7 +217,7 @@ def condition_sampling_partition(site_name, output_folderpath,
                                         CO2pos_COneg='wco2+wco-',
                                         NIGHT=None)\
                                         .filter(['TIMESTAMP', 'NEE', 'GPP', 'Reco', 'ffCO2'])\
-                                        .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O_CO.csv'), index=False)
+                                        .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O_CO.csv'), index=False, na_rep="NaN")
         except Exception as e:
             logger.warning(str(e))
     
@@ -237,7 +237,7 @@ def condition_sampling_partition(site_name, output_folderpath,
                                         CO2pos_COneg='wco2+wco-',
                                         NIGHT=None)\
                                         .filter(['TIMESTAMP', 'NEE', 'GPP', 'Reco', 'ffCO2'])\
-                                        .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_CO.csv'), index=False)
+                                        .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_CO.csv'), index=False, na_rep="NaN")
         except Exception as e:
             logger.warning(str(e))
         
@@ -260,14 +260,57 @@ def condition_sampling_partition(site_name, output_folderpath,
                                         .to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_CH4.csv'), index=False)
         except Exception as e:
             logger.warning(str(e))
+            
+            
+def _clean_average_period_(data, average_period="30min", nan_tolerance=.1):
+    """
+    function: Sets whole averaging periods to NaN if too the relative amount of NaN is bigger than nan_tolerance. 
+    call: _clean_average_period_()
+    Input:
+        * data (pandas.DataFrame): The wavelet decompositioned data, with _qc columns indicating if a value was gapfilled.
+        * average_period (str, default '30min'): Averaging period. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d.
+        * nan_tolerance (float, default .1): Specify amount of NaN values allowed inside the average_period. If more, the respective variable get set NaN for this average_period, also in the high frequency output.
+        **kwargs
+    Return:
+        The cleaned Pandas DataFrame, where the values are set to NaN.
+    """
+    logger = logging.getLogger('waveletec.handlers.clean_average_period')
+    # Remove Data for averaging times with too few valid datapoints
+    # seperately for each variable
+    logger.debug(f'Exclude data from averaging periods with too many NaN, more than nan_tolerance, which is set to {nan_tolerance}. Can be specified in the transform_kwargs.')
+    logger.debug(f'Averaging period is {average_period}')
+    qc_cols = [c for c in data.columns if c.endswith("_qc")]
+    var_cols = [c[:-3] for c in qc_cols if c[:-3] in data.columns]
+    data["TIMESTAMP_av"] = data["TIMESTAMP"].dt.floor(average_period)
+    
+    # period+frequency mean QC for all QC columns
+    period_qc_mean = (
+        data.groupby(["TIMESTAMP_av", "natural_frequency"])[qc_cols]
+        .mean()
+    )
+    logger.debug(f"period_qc_mean is {period_qc_mean}.")
+    
+    # map period+frequency mask back to each row
+    period_index = pd.MultiIndex.from_arrays([data["TIMESTAMP_av"], data["natural_frequency"]])
+    mask_mapped_df = period_qc_mean.reindex(period_index).reset_index(drop=True)
+    qc_to_var = {qc: qc[:-3] for qc in qc_cols if qc[:-3] in data.columns}
+    mask_mapped_df = mask_mapped_df.rename(columns=qc_to_var)
+    logger.debug(f"mask_mapped_df is {mask_mapped_df}.")
+
+    # apply mask
+    data[var_cols] = data[var_cols].where(mask_mapped_df >= (1-nan_tolerance), pd.NA)
+    data.drop(columns=["TIMESTAMP_av"], inplace=True)
+    logger.debug(f"Cleaned dataframe is {data.head()}.")
+    return data
 
 
-def integrate_cospectra(data, f0, dst_path=None):
+def integrate_cospectra(data, f0, dst_path=None, calc_na=False):
     logger = logging.getLogger('waveletec.handlers.integrate_cospectra')
     logger.debug(f"Integrate cospectra with f0 = {f0}")
     
     data0 = data[(np.isnan(data['natural_frequency']) == False) * (data['natural_frequency'] >= f0)
-                 ].groupby(['variable', 'TIMESTAMP'])['value'].agg("sum").reset_index(drop=False)
+                 ].groupby(['variable', 'TIMESTAMP'])['value'].agg(lambda x: x.sum(skipna=calc_na)).reset_index(drop=False)
+    # only integrates up to the specified frequency f0 AND using skipna=False only if we dont have NaN in ANY of the frequencies.
     data1 = data[np.isnan(data['natural_frequency'])].drop(
         'natural_frequency', axis=1)
 
@@ -278,11 +321,11 @@ def integrate_cospectra(data, f0, dst_path=None):
 
     if dst_path:
         logger.debug(f"Writing cospectra with f0 = {f0} to file {dst_path}")
-        datai.to_file(dst_path, index=False)
+        datai.to_file(dst_path, index=False, na_rep="NaN")
     return datai
 
 def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_', 
-                                  dst_path=None, newlog=False):
+                                  dst_path=None, newlog=False, calc_na=False):
     """
     function: integrate cospectra from output files of process() (or main()) into a file.
     call: integrate_cospectra_from_file()
@@ -291,6 +334,7 @@ def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_',
         * pattern (str, default '_full_cospectra_([0-9]+)_'): Pattern to be searched for in the files inside the folder. Usually they contain the pattern '_CDWT_full_cospectra_([0-9]{12})_'.
         * f0 (int, default None): Works as a high-pass filter for the wavelet cospectra (see similar process function f0 = 1/integration_period) inside integrate_cospectra().
         * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function integrate_full_spectra_into_file() is called on its own, e.g. outside of eddypro_wavelet_run or with time delay after the function process().
+        * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
         **kwargs
     Return:
         The integrated cospectrum. Also file saved accordingly.
@@ -321,7 +365,7 @@ def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_',
     else:
         data = root
     
-    return integrate_cospectra(data, f0, dst_path=dst_path)
+    return integrate_cospectra(data, f0, dst_path=dst_path, calc_na=calc_na)
 
 
 
@@ -414,7 +458,7 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt',
         * variables (list, default ['w', 'co2']): variables to decompose. Need to correspond to column names in data.
         * dt (float, default 0.05): Time step between the observations/measurements. Necessary to calculate frequency from wavelet scales, and fs, f1.
         * method (str, default 'dwt'): Wavelet decomposition method. Possible methods are 'dwt', 'cwt', 'fcwt'.
-        * nan_tolerance (float, default .3): Passed to decompose_variables() and then prepare_signal(). Proportion or absolute value of NAN values allowed within the data. Passed to prepare_signal(). If too much NAN, warning gets called. Otherwise NAN get linear interpolated.
+        * nan_tolerance (float, default .3): Passed to decompose_variables() and then prepare_signal(). Proportion or absolute value of NAN values allowed within the data. Passed to prepare_signal(). If too much NAN, warning gets called, but nothing more. In all cases, NaN get linear interpolated.
         * memory_eff (bool, default True): if False, fast but memory-heavy algorithm is used to combine all decomposed data. Otherwise memory-light but slow algorithm is used.
         **kwargs
     
@@ -682,7 +726,7 @@ def __save_cospectra__(data, dst_path, overwrite=False, hf=False, **meta):
     if not hf: # dont drop timestamp for high frequency output because several timestamps in same file.
         data.drop('TIMESTAMP', axis=1, inplace=True)
     with open(dst_path, 'a+', newline='') as part:
-        data.to_file(part, header=use_header, chunksize=500, index=False)
+        data.to_file(part, header=use_header, chunksize=500, index=False, na_rep="NaN")
     logger.debug(f'\t\tSaving DataFrame took {round(time.time() - info_t_startsaveloop)} s.')
     
     # del data
@@ -790,7 +834,7 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
         else ""
     )
     
-    dat.to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_NEE_ET{integration_str}{run_time_str}.csv'), index=False)
+    dat.to_file(os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_NEE_ET{integration_str}{run_time_str}.csv'), index=False, na_rep="NaN")
     
     return dat
 
@@ -830,6 +874,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         * load_kwargs:
             * handle_bmmflux_raw_dataset (bool, default False): Was bmmflux used for pre-processing?
         * transform_kwargs:
+            * nan_tolerance (float, default .1): Specify amount of NaN values, gapfilled, allowed inside the average_period. If more, the respective variable get set NaN for this average_period, also in the high frequency output. To output all data set to 1. Additionally, warning is called if more NaN than nan_tolerance in the whole processed data.
             * memory_eff (bool, default True): If False, fast but memory-heavy algorithm is used to combine all decomposed data. Otherwise memory-light but slow algorithm is used.
         
     Return:
@@ -1156,7 +1201,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
     return fulldata
 
 
-def main(data, varstorun, period=None, average_period='30min', 
+def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1,
          cond_samp_both=False, output_kwargs={}, meta={}, **kwargs):
     """
     function: Performs wavelet transform for specified variables, cross calculate variables using conditional_sampling and averages. Can save the data in files.
@@ -1166,6 +1211,7 @@ def main(data, varstorun, period=None, average_period='30min',
         * varstorun (list): variables to be considered in the calculations as strings in a list. * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]
         * period (list, default None): List with two entries. Decomposed signal only used for data['TIMESTAMP'] > period[0]) & data['TIMESTAMP'] < period[1].
         * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d.
+        * nan_tolerance (float, default 0.1): Specify amount of NaN values allowed inside the average_period. If more, the respective variable get set NaN for this average_period, also in the high frequency output. To output all data set to 1. Additionally, warning is called if more NaN than nan_tolerance in the whole processed data.
         * output_kwargs (dict, default {}): Specify output variables. For saving the data, output_path needs to be set as string containing an element {0} to paste the data in, e.g. output_kwargs={'output_path':'../test_outputs/test_{0}.csv'}. Possible further specification is overwrite (bool) specifiying if files can get overwritten.
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs
@@ -1185,7 +1231,7 @@ def main(data, varstorun, period=None, average_period='30min',
     
     # decompose all required variables
     wvvar = decompose_data(data, vars_unique,
-                           nan_tolerance=.3,
+                           nan_tolerance=nan_tolerance,
                            identifier='0000',
                            **kwargs)
     meta.update({'averaging': average_period,
@@ -1201,7 +1247,21 @@ def main(data, varstorun, period=None, average_period='30min',
     wvvar = wvvar.reset_index(drop=True)
 
     logger.debug(f'Screen data over period of interest yielded data shape {wvvar.shape}.')
-
+    
+    
+    
+    
+    # Remove Data for averaging times with too few valid datapoints
+    # seperately for each variable
+    if nan_tolerance < 1:
+        info_t_clean = time.time()
+        wvvar = _clean_average_period_(wvvar, 
+                                     nan_tolerance=nan_tolerance,
+                                     average_period=average_period)
+        logger.debug(f'Exclude data from averaging periods with too many NaN took {round(time.time() - info_t_clean)} s.')
+    
+    
+    
     # calculate covariance
     info_t_calc_product = time.time()
     # wvout = _calculate_product_from_formula_(wvvar, varstorun)
