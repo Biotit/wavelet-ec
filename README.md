@@ -17,6 +17,8 @@ This fork by Daniel Schöndorf contains some additions:
 - save high-frequency output to files automatically (```high_frq_output=True```)
 - setting an NaN threshold (```nan_tolerance```), for which no output is created per averaging time (```transform_kwargs = {'nan_tolerance':0.1}```).
 - the option to run a more memory-efficient but slower algorithm (```transform_kwargs = {'memory_eff':True}```), default True at the moment.
+- disable edge outputs if no buffer could be applied and the wavelet decomposition is influences by the cone of influence. Can be disabled using (```load_kwargs = {safe_load':False}```).
+- more output settings ```output_kwargs```: ```save_big_file (bool, default False)```: Should ONE file be saved containing all cospectra, additionally to the files in the ```wavelet_full_cospectra``` folder and the setting ```integrate_all_files (bool, default True)``` Should ALL files in folder ```wavelet_full_cospectra``` be integrated or only the onces recently processed.
 - some minor bug fixes
 - additional documentation about several functions
 

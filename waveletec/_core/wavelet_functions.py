@@ -66,7 +66,8 @@ def __wavemother_str_pycwt__(name):
     return mother
 
 
-def bufferforfrequency_dwt(N=0, n_=None, fs=20, level=None, f0=None, max_iteration=10**4, wavelet='db6'):
+def bufferforfrequency_dwt(N=0, n_=None, fs=20, level=None, f0=None, 
+                           max_iteration=10**4, wavelet='db6'):
     logger = logging.getLogger('waveletec.wavelet_functions.bufferforfrequency_dwt')
     try:
         import pywt

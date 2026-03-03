@@ -186,7 +186,8 @@ def __universal_reader__(path, **kw_csv):
             return None
     return df_td
 
-def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verbosity=1, fkwargs={}, tipfile="readme.txt", **kwargs):
+def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, 
+                     verbosity=1, fkwargs={}, tipfile="readme.txt", **kwargs):
     """
     path: str or dict 
     e.g. (str): path = str(os.path.join(inputpath, 'eddypro_raw_datasets/level_6'))
@@ -374,7 +375,8 @@ def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True, verb
 
 
 def loaddatawithbuffer(d0, d1=None, freq=None, buffer=None, 
-                       tname="TIMESTAMP", f_freq=30, sort=True, **kwargs):
+                       tname="TIMESTAMP", f_freq=30, sort=True, safe_load=True,
+                       **kwargs):
     """
     Load data with buffer.
     d0: start date
@@ -384,25 +386,32 @@ def loaddatawithbuffer(d0, d1=None, freq=None, buffer=None,
     tname: name of the timestamp column
     f_freq: frequency of the data in minutes
     kwargs: other arguments to pass to the function"""
+    logger = logging.getLogger('waveletec.read_data.loaddatawithbuffer')
+    
+    #logger.debug(f'f_freq is {f_freq}')
+    
     if isinstance(d0, (pd.DatetimeIndex, list, set, tuple)) and d1 is None:
         d0, d1 = [np.nanmin(d0), np.nanmax(d0)]
+    
+    logger.debug(f"Loading data from {d0} to {d1} with buffer {buffer} s.")
+    logger.debug(f"freq is {freq}, f_freq is {f_freq}, sort is {sort}, safe_load is {safe_load}. To change adjust load_kwargs.")
     
     if buffer == None:
         datarange = [pd.date_range(start=d0, end=d1, freq=f"{f_freq}min")[:-1] + pd.Timedelta(freq)]
     else:
         # buffer align with file frequency (e.g. 30 min)
-        freqno = int(re.match(r"\d*", f"{f_freq}min")[0])
+        #freqno = int(re.match(r"\d*", f"{f_freq}min")[0])
+        freqno = int(re.match(r"\d+", str(f_freq)).group())
         bufi = np.ceil(buffer / (freqno*60)) * freqno
-        datarange = [
-            pd.date_range(
+        datarange = pd.date_range(
                 start=pd.to_datetime(d0) - pd.Timedelta(bufi, unit='min'),
                 end=pd.to_datetime(d1) + pd.Timedelta(bufi, unit='min'),
-                freq=freq)[:-1] + pd.Timedelta(freq)]
+                freq=freq)[:-1] + pd.Timedelta(freq)
                 
-    if not datarange:
+    if len(datarange) == 0:
         return pd.DataFrame()
     
-    data = structuredDataFrame(lookup=datarange, **kwargs)
+    data = structuredDataFrame(lookup=[datarange], **kwargs)
     if data == None or data.data.empty:
         return data.data
     data.data[tname] = pd.to_datetime(data.data[tname])
@@ -411,9 +420,18 @@ def loaddatawithbuffer(d0, d1=None, freq=None, buffer=None,
         data.data = data.data.sort_values(by=tname).reset_index(drop=True)
     
     if buffer:
+        if safe_load: # only use data if buffer could be loaded otherwise return empty data.
+            if data.data[tname].iloc[0] > datarange.min() or data.data[tname].iloc[-1] < datarange.max():
+                logger.warning("Buffer data could not be loaded (fully):")
+                logger.warning(f"Possible data starts with {data.data[tname].iloc[0]} and ends with {data.data[tname].iloc[-1]}, but necessary is the range {datarange.min()} to {datarange.max()}.")
+                logger.warning(f"Please adjust the datetimerange, to be able to load additional data in front and after the datetimerange, accounting for a buffer of {buffer}s.")
+                logger.warning("To prevent misleading output data, this chunk is skipped.")
+                return pd.DataFrame()
         d0 = pd.to_datetime(d0) - pd.Timedelta(buffer*1.1, unit='s')
         d1 = pd.to_datetime(d1) + pd.Timedelta(buffer*1.1, unit='s')
         data.filter({tname: (d0, d1)})
+        
+            
 
     # garantee all data points, if any valid time, else empty dataframe
     if np.sum(np.isnat(data.data.TIMESTAMP)==False):
@@ -422,5 +440,5 @@ def loaddatawithbuffer(d0, d1=None, freq=None, buffer=None,
         #                    on=tname, how='outer').reset_index(drop=True)
         return data.data
     else:
-        pd.DataFrame()
+        return pd.DataFrame()
 

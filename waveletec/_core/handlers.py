@@ -916,7 +916,8 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         
     def _load_data():
         start_time = time.time()
-        data = loaddatawithbuffer(yl, d1=None, freq=_f, buffer=buffer, f_freq=_f, **load_kwargs)
+        data = loaddatawithbuffer(yl, d1=None, freq=_f, buffer=buffer, 
+                                  f_freq=_f, **load_kwargs)
         if data.empty:
             logger.warning(f"UserWarning: No file found ({date}, path: {load_kwargs.get('path', 'default')}).")
             return None
@@ -1011,6 +1012,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
     
     _, _, _f = ymd
     ymd = hc24.list_time_in_period(*ymd, processing_time_duration, include='both')
+    # logger.debug(f'ymd is {ymd}')
 
     buffer = 0 if method == 'cov' else (
         bufferforfrequency_dwt(n_=_f, **wt_kwargs) / 2 if method == 'dwt'
