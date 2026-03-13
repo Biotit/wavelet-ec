@@ -288,19 +288,19 @@ def _clean_average_period_(data, average_period="30min", nan_tolerance=.1):
         data.groupby(["TIMESTAMP_av", "natural_frequency"])[qc_cols]
         .mean()
     )
-    logger.debug(f"period_qc_mean is {period_qc_mean}.")
+    #logger.debug(f"period_qc_mean is {period_qc_mean}.")
     
     # map period+frequency mask back to each row
     period_index = pd.MultiIndex.from_arrays([data["TIMESTAMP_av"], data["natural_frequency"]])
     mask_mapped_df = period_qc_mean.reindex(period_index).reset_index(drop=True)
     qc_to_var = {qc: qc[:-3] for qc in qc_cols if qc[:-3] in data.columns}
     mask_mapped_df = mask_mapped_df.rename(columns=qc_to_var)
-    logger.debug(f"mask_mapped_df is {mask_mapped_df}.")
+    #logger.debug(f"mask_mapped_df is {mask_mapped_df}.")
 
     # apply mask
     data[var_cols] = data[var_cols].where(mask_mapped_df >= (1-nan_tolerance), pd.NA)
     data.drop(columns=["TIMESTAMP_av"], inplace=True)
-    logger.debug(f"Cleaned dataframe is {data.head()}.")
+    #logger.debug(f"Cleaned dataframe is {data.head()}.")
     return data
 
 
@@ -346,11 +346,11 @@ def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_',
     if isinstance(root, str):
         saved_files = {}
         for name in os.listdir(root):
-            # logger.debug(f"Looking through {name}")
+            logger.debug(f"Looking through {name}")
             dateparts = re.findall(pattern, name, flags=re.IGNORECASE)
             if len(dateparts) == 1:
                 saved_files[dateparts[0]] = os.path.join(root, name)
-        # logger.debug(f"Found {saved_files} that match the provided pattern: {pattern}.")
+        #logger.debug(f"Found {saved_files} that match the provided pattern: {pattern}.")
 
         def __read__(date, path):
             r = pd.read_csv(path, skiprows=11, sep=',')
@@ -769,7 +769,7 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
     # to be able to have different integration_period = 1/f0, hence different high pass filters in the folder
     # search for the pattern with variable minutes
     if integration_period and run_time:
-        dst_path = os.path.join(output_folderpath + str(site_name) + f"_CDWT_fulldata_integrated_{integration_period//60}min_{run_time}" + ".csv")
+        dst_path = os.path.join(output_folderpath + str(site_name) + f"_CDWT_fulldata_integrated_{round(integration_period/60)}min_{run_time}" + ".csv")
         logger.debug(f"Specified integration_period={integration_period} and run_time={run_time}. Hence taking the file {dst_path}")
     else:
         logger.debug(f"Either not specified integration_period or run_time, taking any file now.")
@@ -823,7 +823,7 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
         dat = dat.merge(df, on="TIMESTAMP", how="outer")
     
     integration_str = (
-        f"_{integration_period//60}min"
+        f"_{round(integration_period/60)}min"
         if integration_period is not None
         else ""
     )
@@ -1156,7 +1156,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         if integration_period:
             print(f'\n \n Integration of all frequencies until a period of {integration_period} s.')
             logger.debug(f'Running Integration of wavelet flux with {integration_period}')
-            dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata_integrated_{integration_period//60}min_" + run_time +".csv")
+            dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata_integrated_{round(integration_period/60)}min_" + run_time +".csv")
             
             # integrate all files or only recent data?
             if output_kwargs.get('integrate_all_files', True):
@@ -1243,9 +1243,9 @@ def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1
     logger.debug(f'Decompose data is over, data shape is {wvvar.shape}.')
     logger.debug(f'\n{wvvar.head()}\n')
     
-    # select valid dates
-    logger.debug(f'Period of interest is from {period[0]} to {period[1]}')
-    if period: wvvar = wvvar[(wvvar['TIMESTAMP'] > period[0]) & (wvvar['TIMESTAMP'] < period[1])]
+    # select valid dates, starting date included, final not to avoid repeating
+    logger.debug(f'Period of interest is from including (>=) {period[0]} to excluding (<) {period[1]}')
+    if period: wvvar = wvvar[(wvvar['TIMESTAMP'] >= period[0]) & (wvvar['TIMESTAMP'] < period[1])]
     wvvar = wvvar.reset_index(drop=True)
 
     logger.debug(f'Screen data over period of interest yielded data shape {wvvar.shape}.')
