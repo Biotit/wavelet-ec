@@ -7,7 +7,7 @@ import pandas as pd
 # project modules
 from .._core.commons import __input_to_series__
 
-def ETpartition_DWCS(data=None, ET='ET', T='T', E='E', H2O='wh2o', Dew='Dew',
+def ETpartition_DWCS(data=None, ET='ET', T='T', E='E', H2O='wh2o', DownwardH2O='DownwardH2O',
                   CS_H2O_H2Opos_CO2neg='wh2o+wco2-', CS_H2O_H2Oneg_CO2neg='wh2o-wco2-', 
                   CS_H2O_H2Oneg_CO2pos='wh2o-wco2+', CS_H2O_H2Opos_CO2pos='wh2o+wco2+'): #NIGHT=None):
     logger = logging.getLogger('wvlt.partition.ETpartition_DWCS')
@@ -32,7 +32,7 @@ def ETpartition_DWCS(data=None, ET='ET', T='T', E='E', H2O='wh2o', Dew='Dew',
     data[T] = CS_H2O_H2Opos_CO2neg
     #logger.debug(f'T is {data[T]}')
     data[E] = CS_H2O_H2Opos_CO2pos
-    data[Dew] = CS_H2O_H2Oneg_CO2neg + CS_H2O_H2Oneg_CO2pos
+    data[DownwardH2O] = CS_H2O_H2Oneg_CO2neg + CS_H2O_H2Oneg_CO2pos
     logger.debug('Finished ETpartition_DWCS, partitioned ET.')
     return data
 
