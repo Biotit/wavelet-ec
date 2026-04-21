@@ -795,7 +795,7 @@ def cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
         if not is_lacking_variable:
             logger.debug(f'For ETpartition_DWCS no lacking variables. Necessary variables were {ETpartition_DWCS_required_variables}.')
             dat_part = pttET.ETpartition_DWCS(str(dst_path))\
-                        .filter(['TIMESTAMP', 'ET', 'T', 'E', 'Dew'])
+                        .filter(['TIMESTAMP', 'ET', 'T', 'E', 'DownwardH2O'])
             list_dat.append(dat_part)
     
     # Partitioning NEE

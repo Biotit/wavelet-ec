@@ -14,6 +14,7 @@ Pedro H H Coimbra, Benjamin Loubet, Olivier Laurent, Matthias Mauder, Bernard He
 This fork by Daniel Schöndorf contains some additions:
 - the possibility to partition ET in addition to NEE (in development)
 - reading bmmflux high-frequency corrected output files
+- density correction for open-path analysers (be careful with units of input variables, currently best adjusted to bmmflux output)
 - save high-frequency output to files automatically (```high_frq_output=True```)
 - setting an NaN threshold (```nan_tolerance```), for which no output is created per averaging time (```transform_kwargs = {'nan_tolerance':0.1}```).
 - the option to run a more memory-efficient but slower algorithm (```transform_kwargs = {'memory_eff':True}```), default True at the moment.
@@ -106,9 +107,12 @@ The documentation of process is:
         * load_kwargs:
             * handle_bmmflux_raw_dataset (bool, default False): Was bmmflux used for pre-processing?
         * transform_kwargs:
-            * nan_tolerance (float, default .1): Specify amount of NaN values allowed inside the average_period. If more, the respective variable get set NaN for this average_period, also in the high frequency output. To output all data set to 1. Additionally, warning is called if more NaN than nan_tolerance in the whole processed data.
+            * nan_tolerance (float, default .1): Specify amount of NaN values, gapfilled, allowed inside the average_period. If more, the respective variable get set NaN for this average_period, also in the high frequency output. To output all data set to 1. Additionally, warning is called if more NaN than nan_tolerance in the whole processed data.
             * memory_eff (bool, default True): If False, fast but memory-heavy algorithm is used to combine all decomposed data. Otherwise memory-light but slow algorithm is used.
-        
+        * correction_kwargs:
+            * correction_density (list or bool, default []): If non-empty List of column names is given, a density correction (Detto & Katul, 2007 (https://doi.org/10.1007/s10546-006-9105-1) for open path analyzers for these columns is implemented. Unit HAS TO BE mmol/m3. If bool and True, co2 and h2o are used as variable names. Example of a list: ["h2o", "co2"]
+            * pTq_cols (list, default []): List of column names necesary to perfrom density correction: pressure, sonic temperature, and water vapor, e.g. ["Pressure", "Ts", "h2o"]. Temperature in °C, pressure in kPa, water vapor in mmol/m3. If load_kwargs = {'handle_bmmflux_raw_dataset':True} it is set automatically to ["Pressure", "Ts", "h2o"] if no input is given.
+            * average_period (str, default not defined): Average period for density correction, given as pandas time string, e.g. "30min". If not specified the default average_period defined as argument above is taken.
     Return:
         fulldata (pandas.DataFrame): Containing all processed data. If integration_period is specified already integrated.
     
@@ -120,8 +124,9 @@ or directly run from a DataFrame or dictionary:
 ```python
 import waveletec
 data = ...
-waveletec.main(data, varstorun, period=None, average_period='30min', 
-         cond_samp_both=False, output_kwargs={}, meta={}, **kwargs):
+waveletec.main(ddata, varstorun, period=None, average_period='30min', nan_tolerance=0.1,
+         cond_samp_both=False, correction_kwargs = {},
+         output_kwargs={}, meta={}, **kwargs):
 ```
 With corresponding documentation:
 ```python
@@ -134,6 +139,11 @@ With corresponding documentation:
         * period (list, default None): List with two entries. Decomposed signal only used for data['TIMESTAMP'] > period[0]) & data['TIMESTAMP'] < period[1].
         * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d.
         * nan_tolerance (float, default 0.1): Specify amount of NaN values allowed inside the average_period. If more, the respective variable get set NaN for this average_period, also in the high frequency output. To output all data set to 1. Additionally, warning is called if more NaN than nan_tolerance in the whole processed data.
+        * cond_samp_both (bool, default True): If True both parts of the formula are conditionally sampled. If False, only the leading part of the formula is sampled. E.g. if False in case of 'w*co2|w*h2o', we get the output columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, stating wco2 being conditionally sampled e.g. for wco2+wh2o+ when wco2 is positiv AND wh2o is positive. If True, we get the output columns wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco2-wh2o-,wh2o+wco2+,wh2o+wco2-,wh2o-wco2+,wh2o-wco2-, hence, we get both, wco2 and wh2o conditionally sampled.
+        * correction_kwargs (dict, default {}):
+            * correction_density (list or bool, default []): If non-empty List of column names is given, a density correction (Detto & Katul, 2007 (https://doi.org/10.1007/s10546-006-9105-1) for open path analyzers for these columns is implemented. Unit HAS TO BE mmol/m3. If bool and True, co2 and h2o are used as variable names. Example of a list: ["h2o", "co2"]
+            * pTq_cols (list, default []): List of column names necesary to perfrom density correction: pressure, sonic temperature, and water vapor, e.g. ["Pressure", "Ts", "h2o"]. Temperature in °C, pressure in kPa, water vapor in mmol/m3.
+            * average_period (str, default not defined): Average period for density correction, given as pandas time string, e.g. "30min". If not specified the default average_period defined as argument above is taken.
         * output_kwargs (dict, default {}): Specify output variables. For saving the data, output_path needs to be set as string containing an element {0} to paste the data in, e.g. output_kwargs={'output_path':'../test_outputs/test_{0}.csv'}. Possible further specification is overwrite (bool) specifiying if files can get overwritten.
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs
@@ -266,6 +276,13 @@ The output is similar to the output of the integrated spectra (see below).
 
 The program will run and write the high frequency output, even if there is already a integrated spectra output, which will not be overriden automatically.
 
+### Activating the density correction for open-path analyzers
+Using the argument ```correction_kwargs``` in the process or main function, passed as dictionary, it is possible to activate a density correction for open-path analyzers (e.g. using ```correction_kwargs = {"correction_density":True}```).
+The correction is performed according to Detto & Katul, 2007 (https://doi.org/10.1007/s10546-006-9105-1.)
+In contrast to all other parts of the code, in here the units are important!
+
+See the documentation of the process or main function above for details.
+
 
 ### Using the command line / terminal
 
@@ -368,7 +385,7 @@ TIMESTAMP,co2,co2_qc,h2o,h2o_qc,w,w_qc,wco2,wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco
 ### Output Format Partitioned
 
 ```cs
-TIMESTAMP,ET,T,E,Dew,NEE,GPP,Reco
+TIMESTAMP,ET,T,E,DownwardH2O,NEE,GPP,Reco
 2025-04-07 08:00:00,-1.6948474791162642,0.000914847844653,0.0583496289049483,-1.7541119558658658,0.0202366629125897,-0.0036841362149019003,0.0239207991274916
 ```
 
