@@ -870,6 +870,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs: Further arguments can be passed as kwargs. Pass e.g. as load_kwargs = {'handle_bmmflux_raw_dataset':True}. Important settings include:
         * output_kwargs:
+            * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant. Note that this setting increases doubles the amount of averaged data stored.
             * save_big_file (bool, default False): Should ONE file be saved containing all cospectra, additionally to the files in the wavelet_full_cospectra folder
             * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
         * load_kwargs:
@@ -1325,8 +1326,11 @@ def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1
     # for i in range(len(φcs)):
     #     φcs[i] = smooth_2d_data(
     #         φcs[i], method='repeat', smoothing=smoothing)
+    
 
+    
     # assemble data
+    # logger.debug(f"wvcsp:{wvcsp.head()}, growingdata: {growingdata.head()}")
     info_t_assemble_data = time.time()
     growingdata = pd.concat([growingdata, wvcsp], axis=1)
     logger.debug(f'\tAssemble data took {round(time.time() - info_t_assemble_data)} s.')
@@ -1373,6 +1377,17 @@ def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1
         else:
             logger.error("Specified high frequency output but not provided high frequency output path (output_path_hf).")
     
+    
+    # calculate method statistics
+    # time fraction of sampled events and time scale of single event
+    if output_kwargs.get('statistics'):
+        info_t_method_statistics = time.time()
+        dat_methstat = pttET._method_statistics_(growingdata, 
+                            average_period=average_period, 
+                            cols_for_stat=list(wvcsp.columns))
+        logger.debug(f'\tCalculate method statistics took {round(time.time() - info_t_method_statistics)} s.')
+        logger.debug(f"Method statistics are: {dat_methstat}")
+    
     # average
     info_t_average = time.time()
     growingdata['TIMESTAMP'] = growingdata['TIMESTAMP'].dt.floor(
@@ -1389,6 +1404,10 @@ def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1
     # save in dataframe and .csv
     growingdata = (growingdata.sort_values(by=__ID_COLS__)
                 .melt(__ID_COLS__))
+    
+    # combine with method statistics, calculated above
+    if output_kwargs.get('statistics'):
+        growingdata = pd.concat([growingdata, dat_methstat])
     
     saved_files = []
     if output_kwargs.get('output_path', None) and output_kwargs.get('output', True):

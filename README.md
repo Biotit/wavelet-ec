@@ -280,6 +280,7 @@ The program will run and write the high frequency output, even if there is alrea
 Using the argument ```correction_kwargs``` in the process or main function, passed as dictionary, it is possible to activate a density correction for open-path analyzers (e.g. using ```correction_kwargs = {"correction_density":True}```).
 The correction is performed according to Detto & Katul, 2007 (https://doi.org/10.1007/s10546-006-9105-1.)
 In contrast to all other parts of the code, in here the units are important!
+Hence, currently its best implemented with the bmmflux output.
 
 See the documentation of the process or main function above for details.
 
@@ -304,7 +305,7 @@ manually in a script the functions
 ```run_from_eddypro```, ```process```, ```integrate_cospectra_from_file```, 
 ```cs_partition_NEE_ET```, respectively.
 
-Please consider using the functions directly (e.g. via a script) when you want to make use of all the possible arguments of the functions.
+Please consider using the functions directly (e.g. via a script) when you want to make use of all the possible arguments of the functions like using the density correction.
 
 
 

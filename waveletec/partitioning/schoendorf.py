@@ -37,10 +37,26 @@ def ETpartition_DWCS(data=None, ET='ET', T='T', E='E', H2O='wh2o', DownwardH2O='
     return data
 
 
-
+def _method_statistics_(data, average_period, cols_for_stat):
+    logger = logging.getLogger('wvlt.partition._method_statistics_')
+    logger.debug('Calculating method statistics ')
     
-
-
+    cols_for_stat.extend(["TIMESTAMP", "natural_frequency"])
+    data = data[cols_for_stat].copy()
+    #metstat_data_l = []
+    data["TIMESTAMP"] = data["TIMESTAMP"].dt.floor(average_period)
+    
+    # Time fraction of sampled events per Timestamp and Frequency
+    logger.debug(f'Calculating time fraction, data is {data}')
+    time_frac = (data.groupby(["TIMESTAMP", "natural_frequency"])
+                 .agg(lambda x: x.astype(bool).mean())
+                 .add_suffix("_t_fract")
+                 .reset_index()
+                 #.sort_values(by=["TIMESTAMP_av", "natural_frequency"])
+                 .melt(id_vars=["TIMESTAMP", "natural_frequency"]))
+    logger.debug(f'Calculated time fraction, time_frac is {time_frac}')
+    
+    return time_frac
 
 
 
