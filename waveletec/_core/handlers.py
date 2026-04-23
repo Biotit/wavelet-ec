@@ -305,18 +305,43 @@ def _clean_average_period_(data, average_period="30min", nan_tolerance=.1):
     return data
 
 
-def integrate_cospectra(data, f0, dst_path=None, calc_na=False):
+def integrate_cospectra(data, f0, dst_path=None, calc_na=False,
+                        variables_to_mean=("_t_fract", "_t_scale", "_qc")):
     logger = logging.getLogger('waveletec.handlers.integrate_cospectra')
-    logger.debug(f"Integrate cospectra with f0 = {f0}")
+    # logger.debug(f"Integrate cospectra with f0 = {f0}")
     
-    data0 = data[(np.isnan(data['natural_frequency']) == False) * (data['natural_frequency'] >= f0)
-                 ].groupby(['variable', 'TIMESTAMP'])['value'].agg(lambda x: x.sum(skipna=calc_na)).reset_index(drop=False)
-    # only integrates up to the specified frequency f0 AND using skipna=False only if we dont have NaN in ANY of the frequencies.
-    data1 = data[np.isnan(data['natural_frequency'])].drop(
-        'natural_frequency', axis=1)
+    def variable_aggregation(group):
+        logger.debug(f"group.name is {group.name} and type is {type(group.name)}")
+        variable, TIMESTAMP = group.name
+        
+        if variable.endswith(variables_to_mean):
+            # If the variable to integrate is the method statistics or the quality
+            # control, then average instead of integration
+            # logger.debug(f"variable is {variable}, so hence, taking the mean instead of integrating.")
+            return group["value"].mean()
+        else:
+            # logger.debug(f"variable is {variable}, so taking the sum for integration.")
+            # if its the normal decomposed flux, then of course integrate!
+            # if calc_na=False, only integrate if we dont have NaN in any of
+            # the frequency values
+            return group["value"].sum(skipna=calc_na) 
+    
+    # only integrates up to the specified frequency f0
+    data0 = (data[(np.isnan(data['natural_frequency']) == False) & (data['natural_frequency'] >= f0)]
+             .groupby(['variable', 'TIMESTAMP'])
+             .apply(variable_aggregation, include_groups=False)
+             .reset_index(name="value"))
+    
+    # Original code to integrate all and take no mean:
+    # data0 = data[(np.isnan(data['natural_frequency']) == False) * (data['natural_frequency'] >= f0)
+    #             ].groupby(['variable', 'TIMESTAMP'])['value'].agg(lambda x: x.sum(skipna=calc_na)).reset_index(drop=False)
+    
+    data1 = (data[np.isnan(data['natural_frequency'])]
+             .drop('natural_frequency', axis=1))
 
-    datai = pd.concat([data1[np.isin(
-        data1['variable'], data0['variable'].unique()) == False], data0]).drop_duplicates()
+    datai = (pd.concat([data1[np.isin(
+        data1['variable'], data0['variable'].unique()) == False], data0])
+        .drop_duplicates())
     datai = datai.pivot_table('value', 'TIMESTAMP',
                               'variable').reset_index(drop=False)
 
@@ -326,7 +351,8 @@ def integrate_cospectra(data, f0, dst_path=None, calc_na=False):
     return datai
 
 def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_', 
-                                  dst_path=None, newlog=False, calc_na=False):
+                                  dst_path=None, calc_na=False,
+                                  variables_to_mean=("_t_fract", "_t_scale", "_qc")):
     """
     function: integrate cospectra from output files of process() (or main()) into a file.
     call: integrate_cospectra_from_file()
@@ -334,13 +360,13 @@ def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_',
         * root (str): Path to the folder with the files to be loaded. Usually the folder is named wavelet_full_cospectra. 
         * pattern (str, default '_full_cospectra_([0-9]+)_'): Pattern to be searched for in the files inside the folder. Usually they contain the pattern '_CDWT_full_cospectra_([0-9]{12})_'.
         * f0 (int, default None): Works as a high-pass filter for the wavelet cospectra (see similar process function f0 = 1/integration_period) inside integrate_cospectra().
-        * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function integrate_full_spectra_into_file() is called on its own, e.g. outside of eddypro_wavelet_run or with time delay after the function process().
+        * dst_path (str, default None): Path to destination file to save the integrated data.
         * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
-        **kwargs
+        * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
     Return:
         The integrated cospectrum. Also file saved accordingly.
     """
-    
+        
     # use glob.glob to find files matching the pattern
     logger = logging.getLogger('waveletec.handlers.integrate_cospectra_from_file')
     logger.debug(f"Try to integrate cospectra from file in folder {root} with f0 = {f0}.")
@@ -366,12 +392,17 @@ def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_',
     else:
         data = root
     
-    return integrate_cospectra(data, f0, dst_path=dst_path, calc_na=calc_na)
+    return integrate_cospectra(data, f0, dst_path=dst_path, calc_na=calc_na,
+                               variables_to_mean=variables_to_mean)
 
 
 
 def integrate_full_spectra_into_file(site_name, output_folderpath, 
-                                     integration_period=60*30, newlog=False, **kwargs):
+                                     integration_period=60*30,
+                                     pattern='_CDWT_full_cospectra_([0-9]{12})_', 
+                                     newlog=False,
+                                     calc_na=False,
+                                     variables_to_mean=("_t_fract", "_t_scale", "_qc")):
     """
     function: integrate cospectra from output files of process() (or main()) into a file.
     status: not necessary, please JUST USE integrate_cospectra_from_file instead.
@@ -379,10 +410,12 @@ def integrate_full_spectra_into_file(site_name, output_folderpath,
     Input:
         * site_name: Site name of the data to be loaded in. Nessessary to construct file names to be loaded. File names have to correspond to output file names of the function main(), i.e. they need to contain the pattern '_CDWT_full_cospectra_([0-9]{12})_' and have to be saved inside the subfolder wavelet_full_cospectra of output_folderpath.
         * output_folderpath: Path of the folder where the output file gets saved.
+        * pattern (str, default '_full_cospectra_([0-9]+)_'): Pattern to be searched for in the files inside the folder. Usually they contain the pattern '_CDWT_full_cospectra_([0-9]{12})_'.
         * integration_period (int, default None): integration period of the wavelength signal in s.
             Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
         * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function integrate_full_spectra_into_file() is called on its own, e.g. outside of eddypro_wavelet_run or with time delay after the function process().
-        **kwargs
+        * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
+        * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
     Return:
         No return.
     """
@@ -399,8 +432,12 @@ def integrate_full_spectra_into_file(site_name, output_folderpath,
     
     #dst_path = os.path.join(output_folderpath, str(
     #    site_name)+f'_CDWT_full_cospectra.csv')
-    integrate_cospectra_from_file(os.path.join(output_folderpath, 'wavelet_full_cospectra'),
-                                          1/integration_period, '_CDWT_full_cospectra_([0-9]{12})_', dst_path)
+    integrate_cospectra_from_file(root=os.path.join(output_folderpath, 'wavelet_full_cospectra'),
+                                         f0=1/integration_period, 
+                                          pattern='_CDWT_full_cospectra_([0-9]{12})_', 
+                                          dst_path=dst_path,
+                                          calc_na=calc_na,
+                                          variables_to_mean=variables_to_mean)
 
 
 def decompose_variables(data, variables=['w', 'co2'], method='dwt', 
