@@ -311,7 +311,7 @@ def integrate_cospectra(data, f0, dst_path=None, calc_na=False,
     # logger.debug(f"Integrate cospectra with f0 = {f0}")
     
     def variable_aggregation(group):
-        logger.debug(f"group.name is {group.name} and type is {type(group.name)}")
+        # logger.debug(f"group.name is {group.name} and type is {type(group.name)}")
         variable, TIMESTAMP = group.name
         
         if variable.endswith(variables_to_mean):
@@ -907,7 +907,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs: Further arguments can be passed as kwargs. Pass e.g. as load_kwargs = {'handle_bmmflux_raw_dataset':True}. Important settings include:
         * output_kwargs:
-            * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant. Note that this setting increases doubles the amount of averaged data stored.
+            * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant. Note that this setting doubles the amount of averaged data stored.
             * save_big_file (bool, default False): Should ONE file be saved containing all cospectra, additionally to the files in the wavelet_full_cospectra folder
             * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
         * load_kwargs:
@@ -1268,6 +1268,9 @@ def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1
             * pTq_cols (list, default []): List of column names necesary to perfrom density correction: pressure, sonic temperature, and water vapor, e.g. ["Pressure", "Ts", "h2o"]. Temperature in °C, pressure in kPa, water vapor in mmol/m3.
             * average_period (str, default not defined): Average period for density correction, given as pandas time string, e.g. "30min". If not specified the default average_period defined as argument above is taken.
         * output_kwargs (dict, default {}): Specify output variables. For saving the data, output_path needs to be set as string containing an element {0} to paste the data in, e.g. output_kwargs={'output_path':'../test_outputs/test_{0}.csv'}. Possible further specification is overwrite (bool) specifiying if files can get overwritten.
+            Further settings inside output_kwargs include:
+                * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant. Note that this setting doubles the amount of averaged data stored.
+                * high_frq_output (bool, default not defined --> False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage.
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs: Additional arguments passed to the functions. Should include the sampling interval, dt in seconds and further stuff, the process function for this.
     Return:

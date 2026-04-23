@@ -12,9 +12,10 @@ Pedro H H Coimbra, Benjamin Loubet, Olivier Laurent, Matthias Mauder, Bernard He
 
 ## Version NEE_ET
 This fork by Daniel Schöndorf contains some additions:
-- the possibility to partition ET in addition to NEE (in development)
+- the possibility to partition ET in addition to NEE
 - reading bmmflux high-frequency corrected output files
 - density correction for open-path analysers (be careful with units of input variables, currently best adjusted to bmmflux output)
+- calculating the time fraction and scale of the events conditionally sampled in each quadrant
 - save high-frequency output to files automatically (```high_frq_output=True```)
 - setting an NaN threshold (```nan_tolerance```), for which no output is created per averaging time (```transform_kwargs = {'nan_tolerance':0.1}```).
 - the option to run a more memory-efficient but slower algorithm (```transform_kwargs = {'memory_eff':True}```), default True at the moment.
@@ -102,6 +103,7 @@ The documentation of process is:
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs: Further arguments can be passed as kwargs. Pass e.g. as load_kwargs = {'handle_bmmflux_raw_dataset':True}. Important settings include:
         * output_kwargs:
+            * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant. Note that this setting doubles the amount of averaged data stored.
             * save_big_file (bool, default False): Should ONE file be saved containing all cospectra, additionally to the files in the wavelet_full_cospectra folder
             * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
         * load_kwargs:
@@ -124,7 +126,7 @@ or directly run from a DataFrame or dictionary:
 ```python
 import waveletec
 data = ...
-waveletec.main(ddata, varstorun, period=None, average_period='30min', nan_tolerance=0.1,
+waveletec.main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1,
          cond_samp_both=False, correction_kwargs = {},
          output_kwargs={}, meta={}, **kwargs):
 ```
@@ -145,8 +147,11 @@ With corresponding documentation:
             * pTq_cols (list, default []): List of column names necesary to perfrom density correction: pressure, sonic temperature, and water vapor, e.g. ["Pressure", "Ts", "h2o"]. Temperature in °C, pressure in kPa, water vapor in mmol/m3.
             * average_period (str, default not defined): Average period for density correction, given as pandas time string, e.g. "30min". If not specified the default average_period defined as argument above is taken.
         * output_kwargs (dict, default {}): Specify output variables. For saving the data, output_path needs to be set as string containing an element {0} to paste the data in, e.g. output_kwargs={'output_path':'../test_outputs/test_{0}.csv'}. Possible further specification is overwrite (bool) specifiying if files can get overwritten.
+            Further settings inside output_kwargs include:
+                * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant. Note that this setting doubles the amount of averaged data stored.
+                * high_frq_output (bool, default not defined --> False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage.
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
-        **kwargs
+        **kwargs: Additional arguments passed to the functions. Should include the sampling interval, dt in seconds and further stuff, the process function for this.
     Return:
         A new class object named var_ with class attributes data and saved. Data includes the averaged wavelet transformed, cross calculated variables. saved_files contains strings with paths to where the saved files are placed. If save return as test = main(), access data via test.data or test.saved.
     """
@@ -158,7 +163,8 @@ If e.g. inside process no integration_period was specified:
 import waveletec
 
 waveletec.integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_', 
-                                  dst_path=None, newlog=False)
+                                  dst_path=None, calc_na=False,
+                                  variables_to_mean=("_t_fract", "_t_scale", "_qc")):
 """
     function: integrate cospectra from output files of process() (or main()) into a file.
     call: integrate_cospectra_from_file()
@@ -166,8 +172,9 @@ waveletec.integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9
         * root (str): Path to the folder with the files to be loaded. Usually the folder is named wavelet_full_cospectra. 
         * pattern (str, default '_full_cospectra_([0-9]+)_'): Pattern to be searched for in the files inside the folder. Usually they contain the pattern '_CDWT_full_cospectra_([0-9]{12})_'.
         * f0 (int, default None): Works as a high-pass filter for the wavelet cospectra (see similar process function f0 = 1/integration_period) inside integrate_cospectra().
-        * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function integrate_full_spectra_into_file() is called on its own, e.g. outside of eddypro_wavelet_run or with time delay after the function process().
-        **kwargs
+        * dst_path (str, default None): Path to destination file to save the integrated data.
+        * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
+        * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
     Return:
         The integrated cospectrum. Also file saved accordingly.
 """
@@ -283,6 +290,9 @@ In contrast to all other parts of the code, in here the units are important!
 Hence, currently its best implemented with the bmmflux output.
 
 See the documentation of the process or main function above for details.
+
+### Activating the method statistics
+In the process() or main() function the argument ```output_kwargs = {'statistics':True}```, the time fraction and average scale of events sampled within the respective quadrant are calculated and written in the output files. For integration (```waveletec.integrate_cospectra_from_file```) in default the statistics are averaged and not summed over the frequency scales.
 
 
 ### Using the command line / terminal
