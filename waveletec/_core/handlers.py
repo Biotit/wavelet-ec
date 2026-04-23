@@ -1232,7 +1232,7 @@ def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1
             * average_period (str, default not defined): Average period for density correction, given as pandas time string, e.g. "30min". If not specified the default average_period defined as argument above is taken.
         * output_kwargs (dict, default {}): Specify output variables. For saving the data, output_path needs to be set as string containing an element {0} to paste the data in, e.g. output_kwargs={'output_path':'../test_outputs/test_{0}.csv'}. Possible further specification is overwrite (bool) specifiying if files can get overwritten.
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
-        **kwargs
+        **kwargs: Additional arguments passed to the functions. Should include the sampling interval, dt in seconds and further stuff, the process function for this.
     Return:
         A new class object named var_ with class attributes data and saved. Data includes the averaged wavelet transformed, cross calculated variables. saved_files contains strings with paths to where the saved files are placed. If save return as test = main(), access data via test.data or test.saved.
     """
@@ -1384,7 +1384,9 @@ def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1
         info_t_method_statistics = time.time()
         dat_methstat = pttET._method_statistics_(growingdata, 
                             average_period=average_period, 
-                            cols_for_stat=list(wvcsp.columns))
+                            cols_for_stat=list(wvcsp.columns),
+                            dt = kwargs.get('dt', None)
+                            )
         logger.debug(f'\tCalculate method statistics took {round(time.time() - info_t_method_statistics)} s.')
         logger.debug(f"Method statistics are: {dat_methstat}")
     

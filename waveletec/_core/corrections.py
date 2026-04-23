@@ -15,7 +15,8 @@ logger = logging.getLogger('corrections')
 def density_correction(data, correction_density, pTq_cols,
                          average_period):
     """
-    function: Applies a density correction to with open-path analyzers measured scalars according to Detto & Katul, 2007 (https://doi.org/10.1007/s10546-006-9105-1. In contrast to all other parts of the code, in here the units are important!)
+    function: Applies a density correction to with open-path analyzers measured scalars according to Detto & Katul, 2007 (https://doi.org/10.1007/s10546-006-9105-1. 
+        In contrast to all other parts of the code, in here the units are important!)
         The code is modified based upon the code by Zahn, 2022 (PartitioningMethods) and Skaggs, 2018 (Fluxpart)
     call: density_correction()
     Input:
