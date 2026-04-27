@@ -49,6 +49,11 @@ python -m pip install .
 
 ### For development and for managing all packages with conda
 
+It is possible to install using pip in editable mode, where changes in the source code are directly mirrored in the installed package 
+```bash
+python -m pip install -e .
+```
+
 (Optional) Using conda in the pre-devined environment I used:
  ```
  conda create -f conda/environment.yml
@@ -57,6 +62,7 @@ python -m pip install .
 If you want you can then also install WaveletEC in there or just run from script.
 For running from script without installation, the working directory just needs to be where above the folder waveletec (hence where this README.md is located).
 Then its possible to just write  ```import waveletec``` in the python script.
+
 
 
 ## Usage
