@@ -306,7 +306,7 @@ def _clean_average_period_(data, average_period="30min", nan_tolerance=.1):
 
 
 def integrate_cospectra(data, f0, dst_path=None, calc_na=False,
-                        variables_to_mean=("_t_fract", "_t_scale", "_qc")):
+                        variables_to_mean=("_t_fract", "_t_scale", "_qc", "_r")):
     logger = logging.getLogger('waveletec.handlers.integrate_cospectra')
     # logger.debug(f"Integrate cospectra with f0 = {f0}")
     
@@ -374,7 +374,7 @@ def integrate_cospectra(data, f0, dst_path=None, calc_na=False,
 
 def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_', 
                                   dst_path=None, calc_na=False,
-                                  variables_to_mean=("_t_fract", "_t_scale", "_qc")):
+                                  variables_to_mean=("_t_fract", "_t_scale", "_qc", "_r")):
     """
     function: integrate cospectra from output files of process() (or main()) into a file.
     call: integrate_cospectra_from_file()
@@ -384,7 +384,7 @@ def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_',
         * f0 (int, default None): Works as a high-pass filter for the wavelet cospectra (see similar process function f0 = 1/integration_period) inside integrate_cospectra(). From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed.
         * dst_path (str, default None): Path to destination file to save the integrated data.
         * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
-        * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
+        * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc", "_r")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
     Return:
         The integrated cospectrum. Also file saved accordingly.
     """
@@ -424,7 +424,7 @@ def integrate_full_spectra_into_file(site_name, output_folderpath,
                                      pattern='_CDWT_full_cospectra_([0-9]{12})_', 
                                      newlog=False,
                                      calc_na=False,
-                                     variables_to_mean=("_t_fract", "_t_scale", "_qc")):
+                                     variables_to_mean=("_t_fract", "_t_scale", "_qc", "_r")):
     """
     function: integrate cospectra from output files of process() (or main()) into a file.
     status: not necessary, please JUST USE integrate_cospectra_from_file instead.
@@ -438,7 +438,7 @@ def integrate_full_spectra_into_file(site_name, output_folderpath,
             From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed.
         * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function integrate_full_spectra_into_file() is called on its own, e.g. outside of eddypro_wavelet_run or with time delay after the function process().
         * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
-        * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
+        * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc", "_r")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
     Return:
         No return.
     """
@@ -535,9 +535,9 @@ def decompose_data(data, variables=['w', 'co2'], dt=0.05, method='dwt',
     info_t_startvarloop = time.time()
     
     kwargs['fs'] = kwargs.get('fs', 1/dt) # if fs specified in wt_kwargs in process() its used here, otherwise taking 1/dt as fs.
-    logger.debug(f'fs set to {kwargs['fs']}.')
+    logger.debug(f"fs set to {kwargs['fs']}.")
     kwargs['f1'] = kwargs.get('f1', (1/2)*(1/dt)) # f1: lowest scale (2x sampling rate), if acquisition_frequency = 20 --> we can highest capture the 10 Hz frequencies because of sampling theorem.
-    logger.debug(f'f1 set to {kwargs['f1']}')
+    logger.debug(f"f1 set to {kwargs['f1']}")
     
     
     # run wavelet transform
@@ -930,7 +930,10 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs: Further arguments can be passed as kwargs. Pass e.g. as load_kwargs = {'handle_bmmflux_raw_dataset':True}. Important settings include:
         * output_kwargs:
-            * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant. Note that this setting doubles the amount of averaged data stored.
+            * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant as well as correlation coefficients. Note that this setting doubles the amount of averaged data stored.
+            * cols_t_stat (list, default see explanation): If method statistics are calculated, then the column names can be given as list over which the time fraction and scale of sampled events are being calculated. By default its all conditionally sampled columns.
+            * cols_corr (list, default see explanation): If method statistics are calculated, then the column names can be given as list between which the correlation coefficient is calculated. By default its all unique variables specified within the argument covariance.
+            * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
             * save_big_file (bool, default False): Should ONE file be saved containing all cospectra, additionally to the files in the wavelet_full_cospectra folder
             * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
         * load_kwargs:
@@ -1152,12 +1155,15 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         
         
         data = _load_data()
-        if data is None:
+        if (data is None # empty loaded data
+            or # empty data of the data of interest without buffer data
+            len(data[(data['TIMESTAMP'] >= min(yl)) & (data['TIMESTAMP'] < max(yl))].index) == 0):
+            
+            logger.info("Empty data loaded. Skipping this chunk. Might be fine for edge cases, e.g. last data chunk.")
             _exit(curoutpath_inprog)
             if output_pathmodel_hf or high_frq_output:
                 _exit(curoutpath_inprog_hf)
             continue
-        
 
         try:
             # main run
@@ -1292,7 +1298,10 @@ def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1
             * average_period (str, default not defined): Average period for density correction, given as pandas time string, e.g. "30min". If not specified the default average_period defined as argument above is taken.
         * output_kwargs (dict, default {}): Specify output variables. For saving the data, output_path needs to be set as string containing an element {0} to paste the data in, e.g. output_kwargs={'output_path':'../test_outputs/test_{0}.csv'}. Possible further specification is overwrite (bool) specifiying if files can get overwritten.
             Further settings inside output_kwargs include:
-                * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant. Note that this setting doubles the amount of averaged data stored.
+                * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant, as well as correlation coefficients. Note that this setting doubles the amount of averaged data stored.
+                * cols_t_stat (list, default see explanation): If method statistics are calculated, then the column names can be given as list over which the time fraction and scale of sampled events are being calculated. By default its all conditionally sampled columns.
+                * cols_corr (list, default see explanation): If method statistics are calculated, then the column names can be given as list between which the correlation coefficient is calculated. By default its all unique variables specified within the argument covariance.
+                * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
                 * high_frq_output (bool, default not defined --> False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage.
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs: Additional arguments passed to the functions. Should include the sampling interval, dt in seconds and further stuff, the process function for this.
@@ -1311,7 +1320,7 @@ def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1
     
     # ad-hoc density correction in case of an open-path analyzer
     if correction_kwargs.get("correction_density", False):
-        logger.debug(f'Starting density_correction.')
+        logger.debug('Starting density_correction.')
         info_t_density_correction = time.time()
         
         if isinstance(correction_kwargs.get("correction_density"), bool):
@@ -1442,13 +1451,15 @@ def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1
     
     
     # calculate method statistics
-    # time fraction of sampled events and time scale of single event
+    # time fraction of sampled events, time scale of single event and correlations
     if output_kwargs.get('statistics'):
         info_t_method_statistics = time.time()
         dat_methstat = pttET._method_statistics_(growingdata, 
                             average_period=average_period, 
-                            cols_for_stat=list(wvcsp.columns),
-                            dt = kwargs.get('dt', None)
+                            cols_t_stat=output_kwargs.get('cols_t_stat', list(wvcsp.columns)),
+                            dt=kwargs.get('dt', None),
+                            cols_corr=output_kwargs.get('cols_corr', vars_unique),
+                            t_scale_thres=output_kwargs.get('t_scale_thres', 10)
                             )
         logger.debug(f'\tCalculate method statistics took {round(time.time() - info_t_method_statistics)} s.')
         logger.debug(f"Method statistics are: {dat_methstat}")

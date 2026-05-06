@@ -3,6 +3,7 @@ import logging
 
 # 3rd party modules
 import pandas as pd
+import numpy as np
 
 # project modules
 from .._core.commons import __input_to_series__
@@ -37,15 +38,17 @@ def ETpartition_DWCS(data=None, ET='ET', T='T', E='E', H2O='wh2o', DownwardH2O='
     return data
 
 
-def _method_statistics_(data, average_period, cols_for_stat, dt):
+def _method_statistics_(data, average_period, cols_t_stat, dt, 
+                        cols_corr, t_scale_thres):
     """
     function: Calculates the statistics of the conditional sampling process for provdided data and columns.
     call: _method_statistics_()
     Input:
         * data (pandas.DataFrame): Data to be processed.
         * average_period (str): Averaging period for which to calculate the statistics. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d.
-        * cols_for_stat (list): The columns in the data from which the statistics are being calculated. It makes sense, that its only the conditionally sampled columns.
-        * dt: Sampling interval of the data (1/sampling frequency). Necessary to recalculate from the number of contigous data for an event to the event time scale. 
+        * cols_t_stat (list): The columns in the data from which the statistics are being calculated. It makes sense, that its only the conditionally sampled columns.
+        * dt (float): Sampling interval of the data (1/sampling frequency). Necessary to recalculate from the number of contigous data for an event to the event time scale. 
+        * cols_corr (list): The columns in the data from which the correlations are being calculated.
     Return:
         pandas.DataFrame in long format with TIMESTAMP, variable and value. The variables are the method statistics. _t_fract denotes the time fraction of sampled events and _t_scale the average (mean) time scale of sampled events.
     """
@@ -53,27 +56,89 @@ def _method_statistics_(data, average_period, cols_for_stat, dt):
     logger = logging.getLogger('wvlt.partition._method_statistics_')
     logger.debug('Calculating method statistics ')
     
-    # Reduce data to data of interest: the columns to do the statistics and the grouping columns
     group_cols = ["TIMESTAMP", "natural_frequency"]
-    cols_for_stat.extend(group_cols)
-    data = data[cols_for_stat].copy()
-    data["TIMESTAMP"] = data["TIMESTAMP"].dt.floor(average_period)
+    
+    # Reduce data to data of interest: the columns to do the statistics and the grouping columns  
+    logger.debug(f'Calculating time fraction and scale for the columns {cols_t_stat}')
+    cols_t_stat_t = cols_t_stat + group_cols
+    data_time = data[cols_t_stat_t].copy()
+    data_time["TIMESTAMP"] = data_time["TIMESTAMP"].dt.floor(average_period)
     
     # Time fraction of sampled events per Timestamp and Frequency
-    time_frac = time_fraction(data, 
+    time_frac = time_fraction(data_time, 
                               group_cols)
     
     # Mean time scale of sampled events per Timestamp and Frequency
-    time_scal = time_scales(data, 
+    time_scal = time_scales(data_time, 
                 group_cols,
                 dt=dt,
-                threshold=10)
+                threshold=t_scale_thres)
+    
+    # Correlation coefficients
+    logger.debug(f'Calculating correlation for the columns {cols_corr}')
+    cols_corr_t = cols_corr + group_cols
+    data_corr = data[cols_corr_t].copy()
+    data_corr["TIMESTAMP"] = data_corr["TIMESTAMP"].dt.floor(average_period)
+    corr_df = correlation_stats(data_corr,
+                                group_cols)
     
     # Combine the calculated statistics
-    data_stat = pd.concat([time_frac, time_scal])
+    data_stat = pd.concat([time_frac, time_scal, corr_df])
     logger.debug(f"Method statistics in data_stat: {data_stat}")
     
     return data_stat
+
+def correlation_stats(data, group_cols):
+    # Calculate correlations per partitioned flux/quadrant and per averaging time
+    
+    logger = logging.getLogger('wvlt.partition.correlation_stats')
+    logger.debug(f'Calculating correlations, data is {data}')
+    
+    # 1. Correlate
+    corr_m = (data.sort_values(group_cols)
+              .groupby(group_cols)
+              .corr()
+              )
+    
+    # # OLD WAY USING MASK:
+    # # 2. Masking to remove doubled values and diagonal from correlation matrix
+    # # Create a mask that matches the SMALL correlation matrix
+    # # for each combination of the grouping variables (e.g., 2x2)
+    # # Get the number of variables (e.g., 2 if co2 and h2o)
+    # n_vars = len(data.columns.drop(group_cols))
+    # small_mask = np.triu(np.ones((n_vars, n_vars)), k=1).astype(bool)
+    
+    # # Tile the mask to match the full length of corr_m
+    # # This repeats the 2x2 mask for every single group/frequency
+    # mask = np.tile(small_mask, (len(corr_m) // n_vars, 1))
+
+    # # 3. Filter results
+    # corr_m = (corr_m
+    #         .where(mask)
+    #         .stack()
+    #         .rename_axis(group_cols + ['corr_1', 'corr_2'])
+    #         .reset_index(name='value')
+    #         )
+    
+    # NEW WAY USING INDICES, better if missing values 
+    # -- which are almost impossible, after gapfilling etc.
+    # It produces the same output as the mask before.
+    corr_m = corr_m.stack()
+    corr_m.index.names = group_cols + ['corr_1', 'corr_2']
+    corr_m = corr_m[corr_m.index.get_level_values('corr_1') < corr_m.index.get_level_values('corr_2')]
+    corr_m = corr_m.reset_index(name='value')
+    
+    # 4. Combine 
+    corr_m['variable'] = corr_m["corr_1"] + '-' + corr_m["corr_2"] + "_r"
+    
+    # 5. Delete old level indices and sort dataframe
+    corr_m = (corr_m.drop(["corr_1", "corr_2"], axis="columns")
+              .sort_values(by=["variable"] + group_cols))
+    
+    logger.debug(f"Calculated correlations, corr_m is {corr_m}")
+    return corr_m
+    
+    
 
 def time_fraction(data, group_cols):
     logger = logging.getLogger('wvlt.partition.time_fraction')
@@ -138,7 +203,7 @@ def time_scales(df, group_cols, dt, threshold=10):
         
         # Create a temporary dataframe of just the non-zero hits to aggregate
         temp_nz = df.loc[nz_indices, group_cols + ['local_idx']].copy()
-        temp_nz['event_id'] = temp_nz.groupby(group_cols, group_keys=False).apply(get_event_ids)
+        temp_nz['event_id'] = temp_nz.groupby(group_cols, group_keys=False).apply(get_event_ids, include_groups=False)
         
         # Count the size of each event, then mean per group
         streak_counts = temp_nz.groupby(group_cols + ['event_id']).size()

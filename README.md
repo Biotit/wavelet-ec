@@ -15,7 +15,7 @@ This fork by Daniel Schöndorf contains some additions:
 - the possibility to partition ET in addition to NEE
 - reading bmmflux high-frequency corrected output files
 - density correction for open-path analysers (be careful with units of input variables, currently best adjusted to bmmflux output)
-- calculating the time fraction and scale of the events conditionally sampled in each quadrant and to differently aggregate them and the quality control indicators during integration algorithms 
+- calculating the time fraction and scale of the events conditionally sampled in each quadrant and the correlation coefficient for each frequency
 - save high-frequency output to files automatically (```high_frq_output=True```)
 - setting an NaN threshold (```nan_tolerance```), for which no output is created per averaging time (```transform_kwargs = {'nan_tolerance':0.1}```).
 - the option to run a more memory-efficient but slower algorithm (```transform_kwargs = {'memory_eff':True}```), default True at the moment.
@@ -24,6 +24,7 @@ This fork by Daniel Schöndorf contains some additions:
 - some minor bug fixes
 - additional documentation about several functions
 - additional warnings if the target integration frequency is far away from the integration performed in reality, because of discrete frequency bands.
+- differently aggregate the quality control indicators and the method statistics during integration algorithms (taking the mean instead of the sum over the frequencies for those)
 
 ## Installation
 
@@ -110,7 +111,10 @@ The documentation of process is:
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs: Further arguments can be passed as kwargs. Pass e.g. as load_kwargs = {'handle_bmmflux_raw_dataset':True}. Important settings include:
         * output_kwargs:
-            * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant. Note that this setting doubles the amount of averaged data stored.
+            * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant as well as correlation coefficients. Note that this setting doubles the amount of averaged data stored.
+            * cols_t_stat (list, default see explanation): If method statistics are calculated, then the column names can be given as list over which the time fraction and scale of sampled events are being calculated. By default its all conditionally sampled columns.
+            * cols_corr (list, default see explanation): If method statistics are calculated, then the column names can be given as list between which the correlation coefficient is calculated. By default its all unique variables specified within the argument covariance.
+           * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
             * save_big_file (bool, default False): Should ONE file be saved containing all cospectra, additionally to the files in the wavelet_full_cospectra folder
             * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
         * load_kwargs:
@@ -155,7 +159,10 @@ With corresponding documentation:
             * average_period (str, default not defined): Average period for density correction, given as pandas time string, e.g. "30min". If not specified the default average_period defined as argument above is taken.
         * output_kwargs (dict, default {}): Specify output variables. For saving the data, output_path needs to be set as string containing an element {0} to paste the data in, e.g. output_kwargs={'output_path':'../test_outputs/test_{0}.csv'}. Possible further specification is overwrite (bool) specifiying if files can get overwritten.
             Further settings inside output_kwargs include:
-                * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant. Note that this setting doubles the amount of averaged data stored.
+                * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant, as well as correlation coefficients. Note that this setting doubles the amount of averaged data stored.
+                * cols_t_stat (list, default see explanation): If method statistics are calculated, then the column names can be given as list over which the time fraction and scale of sampled events are being calculated. By default its all conditionally sampled columns.
+                * cols_corr (list, default see explanation): If method statistics are calculated, then the column names can be given as list between which the correlation coefficient is calculated. By default its all unique variables specified within the argument covariance.
+                * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
                 * high_frq_output (bool, default not defined --> False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage.
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs: Additional arguments passed to the functions. Should include the sampling interval, dt in seconds and further stuff, the process function for this.
@@ -301,10 +308,18 @@ See the documentation of the process or main function above for details.
 ### Activating the method statistics
 In the process() or main() function the argument ```output_kwargs = {'statistics':True}```, the time fraction and average scale of events sampled within the respective quadrant are calculated and written in the output files. For integration (```waveletec.integrate_cospectra_from_file```) in default the statistics are averaged and not summed over the frequency scales.
 
-The output then contains the additional `variable` per each meain variable processed:
+Detail settings include can also be given
+- ```cols_t_stat```: If method statistics are calculated, then the column names can be given as list over which the time fraction and scale of sampled events are being calculated. By default its all conditionally sampled columns.
+- ```cols_corr```: If method statistics are calculated, then the column names can be given as list between which the correlation coefficient is calculated. By default its all unique variables specified within the argument covariance.
+- ```t_scale_thres```: If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events.
+
+As an example you might specifiy: ```output_kwargs = {'statistics':True, 'cols_corr':["co2", "h2o"]}```
+
+The output then contains the additional `variable` processed:
 - **`_t_fract`**: Time fraction of sampled events for this flux.
 - **_t_scale**: Average time scale of sampled events.
 See for these statistics: Thomas et al. 2008 "Estimating daytime subcanopy respiration from conditional sampling methods applied to multi-scalar high frequency turbulence time series".
+- **_r**: Correlation coefficient between the variables.
 
 ### Using the command line / terminal
 
