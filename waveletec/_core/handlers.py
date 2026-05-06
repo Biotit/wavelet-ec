@@ -311,6 +311,9 @@ def integrate_cospectra(data, f0, dst_path=None, calc_na=False,
     # logger.debug(f"Integrate cospectra with f0 = {f0}")
     
     def variable_aggregation(group):
+        # This sub-function determines how a value is aggregated.
+        # either its integrated or its averaged.
+        
         # logger.debug(f"group.name is {group.name} and type is {type(group.name)}")
         variable, TIMESTAMP = group.name
         
@@ -326,6 +329,25 @@ def integrate_cospectra(data, f0, dst_path=None, calc_na=False,
             # the frequency values
             return group["value"].sum(skipna=calc_na) 
     
+    # output a warning which dicrete wavelet level is taken for integration
+    freq = data['natural_frequency'].unique()
+    if f0 >= freq.min():
+        # Filter arrays
+        higher_vals = freq[freq >= f0]
+        lower_vals = freq[freq < f0]
+        
+        # Safety check for edge cases
+        if higher_vals.size > 0 and lower_vals.size > 0:
+            max_band_high_freq = higher_vals.min() # highest frequency band: max frequency border
+            max_band_low_freq = lower_vals.max() # highest frequency band: min frequency border
+            
+            if (1/f0) <= (((1/max_band_high_freq)+(1/max_band_low_freq))/2):
+                logger.warning(f"Specified integration frequency was {f0} Hz ({1/f0} s as period duration). From available frequencies of the wavelet transform integrate from highest frequency up to INCLUDING the frequency band from {max_band_high_freq} Hz ({1/max_band_high_freq} s) to {max_band_low_freq} Hz ({1/max_band_low_freq} s). Please make sure you know what you're doing - potentially changing the integration frequency slightly below {max_band_high_freq} Hz ({1/max_band_high_freq} s) or {max_band_low_freq} Hz ({1/max_band_low_freq} s).")
+            else:
+                logger.info(f"Specified integration frequency was {f0} Hz ({1/f0} s as period duration). From available frequencies of the wavelet transform integrate from highest frequency up to INCLUDING the frequency band from {max_band_high_freq} Hz ({1/max_band_high_freq} s) to {max_band_low_freq} Hz ({1/max_band_low_freq} s).")
+        else:
+            logger.warning(f"Specified integration frequency was {f0} Hz ({1/f0} s as period duration). This is already the highest frequency of either the lowest or the highest available frequency band of the wavelet transform. Please make sure you know what you're doing.")
+        
     # only integrates up to the specified frequency f0
     data0 = (data[(np.isnan(data['natural_frequency']) == False) & (data['natural_frequency'] >= f0)]
              .groupby(['variable', 'TIMESTAMP'])
@@ -359,7 +381,7 @@ def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_',
     Input:
         * root (str): Path to the folder with the files to be loaded. Usually the folder is named wavelet_full_cospectra. 
         * pattern (str, default '_full_cospectra_([0-9]+)_'): Pattern to be searched for in the files inside the folder. Usually they contain the pattern '_CDWT_full_cospectra_([0-9]{12})_'.
-        * f0 (int, default None): Works as a high-pass filter for the wavelet cospectra (see similar process function f0 = 1/integration_period) inside integrate_cospectra().
+        * f0 (int, default None): Works as a high-pass filter for the wavelet cospectra (see similar process function f0 = 1/integration_period) inside integrate_cospectra(). From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed.
         * dst_path (str, default None): Path to destination file to save the integrated data.
         * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
         * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
@@ -412,7 +434,8 @@ def integrate_full_spectra_into_file(site_name, output_folderpath,
         * output_folderpath: Path of the folder where the output file gets saved.
         * pattern (str, default '_full_cospectra_([0-9]+)_'): Pattern to be searched for in the files inside the folder. Usually they contain the pattern '_CDWT_full_cospectra_([0-9]{12})_'.
         * integration_period (int, default None): integration period of the wavelength signal in s.
-            Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
+            Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). 
+            From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed.
         * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function integrate_full_spectra_into_file() is called on its own, e.g. outside of eddypro_wavelet_run or with time delay after the function process().
         * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
         * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
@@ -730,10 +753,10 @@ def __save_cospectra__(data, dst_path, overwrite=False, hf=False, **meta):
             header += f"TIMESTAMP_END = {meta.get('TIMESTAMP_END', max(data.TIMESTAMP))}\n"
             header += f"N: {meta.get('N', len(data.TIMESTAMP))}\n"
             header += f"TIME_BUFFER (applied both in front and after) [min] = {meta.get('buffer', np.nan)/60}\n"
-            header += f"---\n"
-            header += f"y-axis -> wavelet_reconstructed\n"
             header += f"mother_wavelet -> {meta.get('method', '')}\n"
             header += f"acquisition_frequency [Hz] = {1/meta.get('dt', np.nan)}\n"
+            header += f"value -> wavelet_reconstructed or quality control/statistics\n"
+            header += f"natural_frequency -> The upper frequency of the frequency band which the data is accounted to\n"
             header += f"---\n"
             hc24.mkdirs(dst_path)
             with open(dst_path, 'w+') as part: part.write(header)
@@ -748,11 +771,11 @@ def __save_cospectra__(data, dst_path, overwrite=False, hf=False, **meta):
             header += f"TIMESTAMP_END = {meta.get('TIMESTAMP_END', max(data.TIMESTAMP))}\n"
             header += f"N: {meta.get('N', len(data.TIMESTAMP))}\n"
             header += f"TIME_BUFFER (applied both in front and after) [min] = {meta.get('buffer', np.nan)/60}\n"
-            header += f"---\n"
-            header += f"y-axis -> wavelet_reconstructed\n"
             header += f"mother_wavelet -> {meta.get('method', '')}\n"
             header += f"acquisition_frequency [Hz] = {1/meta.get('dt', np.nan)}\n"
             header += f"averaging_interval = {meta.get('averaging', '')}\n"
+            header += f"value -> wavelet_reconstructed or quality control/statistics\n"
+            header += f"natural_frequency -> The upper frequency of the frequency band which the data is accounted to\n"
             hc24.mkdirs(dst_path)
             with open(dst_path, 'w+') as part: part.write(header)
             # legitimate_to_write = 1
@@ -898,7 +921,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         * overwrite (bool, default False): if files can be overriden. If True, output files not get overriden and no calculation is performed for these data.
         * high_frq_output (bool, default False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage.
         * processing_time_duration (str, default "1d"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM. Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
-        * integration_period (int, default None): integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
+        * integration_period (int, default None): minimum integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed.
         * partition (list, default None): Gives if ET and/or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this.
         * method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
         * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d. Passed to the main function.

@@ -15,7 +15,7 @@ This fork by Daniel Schöndorf contains some additions:
 - the possibility to partition ET in addition to NEE
 - reading bmmflux high-frequency corrected output files
 - density correction for open-path analysers (be careful with units of input variables, currently best adjusted to bmmflux output)
-- calculating the time fraction and scale of the events conditionally sampled in each quadrant
+- calculating the time fraction and scale of the events conditionally sampled in each quadrant and to differently aggregate them and the quality control indicators during integration algorithms 
 - save high-frequency output to files automatically (```high_frq_output=True```)
 - setting an NaN threshold (```nan_tolerance```), for which no output is created per averaging time (```transform_kwargs = {'nan_tolerance':0.1}```).
 - the option to run a more memory-efficient but slower algorithm (```transform_kwargs = {'memory_eff':True}```), default True at the moment.
@@ -23,6 +23,7 @@ This fork by Daniel Schöndorf contains some additions:
 - more output settings ```output_kwargs```: ```save_big_file (bool, default False)```: Should ONE file be saved containing all cospectra, additionally to the files in the ```wavelet_full_cospectra``` folder and the setting ```integrate_all_files (bool, default True)``` Should ALL files in folder ```wavelet_full_cospectra``` be integrated or only the onces recently processed.
 - some minor bug fixes
 - additional documentation about several functions
+- additional warnings if the target integration frequency is far away from the integration performed in reality, because of discrete frequency bands.
 
 ## Installation
 
@@ -100,7 +101,7 @@ The documentation of process is:
         * overwrite (bool, default False): if files can be overriden. If True, output files not get overriden and no calculation is performed for these data.
         * high_frq_output (bool, default False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage.
         * processing_time_duration (str, default "1d"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM. Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
-        * integration_period (int, default None): integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra().
+        * integration_period (int, default None): minimum integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed.
         * partition (list, default None): Gives if ET and/or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this.
         * method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
         * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d. Passed to the main function.
@@ -177,13 +178,13 @@ waveletec.integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9
     Input:
         * root (str): Path to the folder with the files to be loaded. Usually the folder is named wavelet_full_cospectra. 
         * pattern (str, default '_full_cospectra_([0-9]+)_'): Pattern to be searched for in the files inside the folder. Usually they contain the pattern '_CDWT_full_cospectra_([0-9]{12})_'.
-        * f0 (int, default None): Works as a high-pass filter for the wavelet cospectra (see similar process function f0 = 1/integration_period) inside integrate_cospectra().
+        * f0 (int, default None): Works as a high-pass filter for the wavelet cospectra (see similar process function f0 = 1/integration_period) inside integrate_cospectra(). From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed.
         * dst_path (str, default None): Path to destination file to save the integrated data.
         * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
         * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
     Return:
         The integrated cospectrum. Also file saved accordingly.
-"""
+    """
 ```
 
 If inside process no partition was specified:
@@ -300,6 +301,10 @@ See the documentation of the process or main function above for details.
 ### Activating the method statistics
 In the process() or main() function the argument ```output_kwargs = {'statistics':True}```, the time fraction and average scale of events sampled within the respective quadrant are calculated and written in the output files. For integration (```waveletec.integrate_cospectra_from_file```) in default the statistics are averaged and not summed over the frequency scales.
 
+The output then contains the additional `variable` per each meain variable processed:
+- **`_t_fract`**: Time fraction of sampled events for this flux.
+- **_t_scale**: Average time scale of sampled events.
+See for these statistics: Thomas et al. 2008 "Estimating daytime subcanopy respiration from conditional sampling methods applied to multi-scalar high frequency turbulence time series".
 
 ### Using the command line / terminal
 
@@ -330,23 +335,22 @@ Please consider using the functions directly (e.g. via a script) when you want t
 The output file for the wavelet-based (co)spectra analysis is structured as follows:
 
 ```cs
-1   wavelet_based_(co)spectra
-2   --------------------------------------------------------------
-3   TIMESTAMP_START = 2022-05-13 00:00:00
-4   TIMESTAMP_END = 2022-05-13 00:30:00
-5   N: 133
-6   TIME_BUFFER [min] = nan
-7   frequency [Hz]
-8   y-axis -> nan
-9   mother_wavelet -> dwt
-10  acquisition_frequency [Hz] = 20.0
-11  averaging_interval [Min] = 30min
-12  natural_frequency,variable,value
-13  3.814697265625e-05,co2,417.0002460141172
-.   ...,...,...
-.   5.0,co2,1.708199383374261e-05
-.   10.0,co2,1.7947312058017124e-07
-.   ...,...,...
+wavelet_based_(co)spectra
+--------------------------------------------------------------
+TIMESTAMP_START = 2025-05-21 00:30:00
+TIMESTAMP_END = 2025-05-21 00:59:59.900000
+N: 306000
+TIME_BUFFER (applied both in front and after) [min] = 615.0
+mother_wavelet -> dwt ~
+acquisition_frequency [Hz] = 10.0
+averaging_interval = 30min
+value -> wavelet_reconstructed or quality control/statistics
+natural_frequency -> The upper frequency of the frequency band which the data is accounted to
+natural_frequency,variable,value
+7.62939453125e-05,w,-2.0928194419790736e-05
+0.000152587890625,w,0.0017116827791335049
+0.00030517578125,w,0.0005543436729026883
+0.0006103515625,w,-0.0009850725297801909
 ```
 
 #### Explanation of Fields:
@@ -359,9 +363,7 @@ The output file for the wavelet-based (co)spectra analysis is structured as foll
 
 - **`TIME_BUFFER [min]`**: Indicates the time buffer in minutes. A value of 0 means no buffer was applied.
 
-- **`frequency [Hz]`**: Specifies the frequency of the data is in Hertz.
-
-- **`y-axis_->_wavelet_coefficient_*_`**: Indicates that the y-axis represents the wavelet coefficients.
+- **`acquisition_frequency [Hz]`**: Specifies the acquisition frequency of the data in Hertz.
 
 - **`mother_wavelet -> dwt`**: Specifies the type of mother wavelet used in the analysis, in this case, `dwt` (Discrete Wavelet Transform).
 
@@ -369,17 +371,22 @@ The output file for the wavelet-based (co)spectra analysis is structured as foll
 
 - **`averaging_interval [Min]`**: The interval over which the data was averaged, specified in minutes.
 
-- **`natural_frequency,variable,value`**: This line contains the actual data points:
-  - **`natural_frequency`**: The frequency at which the data point was recorded.
+- **`value -> wavelet_reconstructed or quality control/statistics`**: Indicates that the `value` output represents the reconstructed time series for each frequency as total value for the frequency band or, optionally, the quality control (`_qc`) and statistic (`_t_scale`, `_t_fract`) values.
+
+- **`natural_frequency -> The upper frequency of the frequency band which the data is accounted to`**: Explanation of the output of `natural_frequency`. The upper frequency of the frequency band which the data is accounted to. The frequency band starts with the highest value (which is given as `natural_frequency` and go up to the next value of `natural_frequency`.
+
+- **`natural_frequency,variable,value`**: This line contains the header for the actual data points:
+  - **`natural_frequency`**: The upper frequency of the frequency band which the data is accounted to. The frequency band starts with the highest value (which is given as `natural_frequency` and go up to the next value of `natural_frequency`.
   - **`variable`**: The variable being measured, such as `co2`.
-  - **`value`**: The value of the variable at the specified natural frequency.
+  - **`value`**: The value of the variable at the specified natural frequency. This is a total value for the total frequency band.
 
 
 ### Output Format Integrated Spectra
 
-The integrated spectra is the sum of all frequencies up to the frequency ```f0```
+The integrated spectra is the sum of all frequencies **at least** up to the frequency ```f0```.
 or corresponding to the specified ```integration_period``` (```f0 = 1/integration_period```).
 Hence, ```f0``` works as a high-pass filter for the wavelet cospectrum.
+BUT: From available frequency bands the the band containing the target frequency is taken **fully**. Hence, integrating takes potentially also **more (lower) frequencies** into account than targeted. Please look at the log output to see up to which frequency integration was performed.
 
 In general, in the cospectra and the integrated spectra, the variables containing
 ```_qc``` specify quality control. In case of discrete wavelet transform (dwt) these

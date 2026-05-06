@@ -67,7 +67,7 @@ def _method_statistics_(data, average_period, cols_for_stat, dt):
     time_scal = time_scales(data, 
                 group_cols,
                 dt=dt,
-                threshold=2)
+                threshold=10)
     
     # Combine the calculated statistics
     data_stat = pd.concat([time_frac, time_scal])
