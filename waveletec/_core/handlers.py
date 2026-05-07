@@ -45,7 +45,7 @@ except ImportError as e:
 
 # project modules
 from . import commons as hc24
-from .read_data import loaddatawithbuffer
+from .read_data import loaddatawithbuffer, check_continous_data
 from .corrections import density_correction
 from .wavelet_functions import universal_wt, formula_to_vars, prepare_signal, bufferforfrequency_dwt, bufferforfrequency
 from ..partitioning import coimbra_et_al_2025 as ptt
@@ -938,6 +938,9 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
             * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
         * load_kwargs:
             * handle_bmmflux_raw_dataset (bool, default False): Was bmmflux used for pre-processing?
+            * safe_load (bool, default True): If True disable calculations and outputs if no full buffer could be applied and the wavelet decomposition is influences by the cone of influence.
+            * fill_with_NA (bool, default True): If the data is not continous, shall it be filled with NA, to make the timestamps continous. 
+            * max_gap (int, default 2*60*60): Allowed maximum gap in the data in seconds. If larger, an error is raised.
         * transform_kwargs:
             * nan_tolerance (float, default .1): Specify amount of NaN values, gapfilled, allowed inside the average_period. If more, the respective variable get set NaN for this average_period, also in the high frequency output. To output all data set to 1. Additionally, warning is called if more NaN than nan_tolerance in the whole processed data.
             * memory_eff (bool, default True): If False, fast but memory-heavy algorithm is used to combine all decomposed data. Otherwise memory-light but slow algorithm is used.
@@ -984,8 +987,10 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         
     def _load_data():
         start_time = time.time()
+        load_kwargs_b = load_kwargs.copy()
+        load_kwargs_b.pop('fill_with_NA')
         data = loaddatawithbuffer(yl, d1=None, freq=_f, buffer=buffer, 
-                                  f_freq=_f, **load_kwargs)
+                                  f_freq=_f, **load_kwargs_b)
         if data.empty:
             logger.warning(f"UserWarning: No file found ({date}, path: {load_kwargs.get('path', 'default')}).")
             return None
@@ -1002,6 +1007,10 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         'fileduration': fileduration,
         'path': input_path,
         # 'acquisition_frequency': acquisition_frequency,
+        'handle_bmmflux_raw_dataset':False,
+        'safe_load':True,
+        'fill_with_NA':True,
+        'max_gap': 2*60*60,
         'fkwargs': {'dt': 1/acquisition_frequency},
         'fmt': kwargs.get("fmt", {}),  # allow user to override or extend
         **kwargs.get("load_kwargs", {}),  # allow user to override or extend,
@@ -1153,9 +1162,17 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
                 "High-frequency output already exists. Disabling high frequency output for this chunk."
                 )
         
-        
+        # Load data
         data = _load_data()
-        if (data is None # empty loaded data
+        
+        # Check if data is continous. 
+        # If not, fill if requested with NA up to a maximum gap size
+        data = check_continous_data(data, 
+                                    1/acquisition_frequency,
+                                    fill_with_NA=load_kwargs.get("fill_with_NA"),
+                                    max_gap=load_kwargs.get("max_gap"))
+        
+        if (data is None # empty loaded data, or with a gap > max_gap
             or # empty data of the data of interest without buffer data
             len(data[(data['TIMESTAMP'] >= min(yl)) & (data['TIMESTAMP'] < max(yl))].index) == 0):
             
@@ -1164,6 +1181,8 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
             if output_pathmodel_hf or high_frq_output:
                 _exit(curoutpath_inprog_hf)
             continue
+        
+
 
         try:
             # main run

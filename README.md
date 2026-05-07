@@ -18,8 +18,9 @@ This fork by Daniel Schöndorf contains some additions:
 - calculating the time fraction and scale of the events conditionally sampled in each quadrant and the correlation coefficient for each frequency
 - save high-frequency output to files automatically (```high_frq_output=True```)
 - setting an NaN threshold (```nan_tolerance```), for which no output is created per averaging time (```transform_kwargs = {'nan_tolerance':0.1}```).
+- checking the loaded data for continuity in its timestamps and creating data with continous time stamps filled with ```NaN``` (```load_kwargs = {'fill_with_NA':True}```). If the data contains a gap too large (```load_kwargs = {'max_gap':2*60*60}```), the data chunk is skipped.
 - the option to run a more memory-efficient but slower algorithm (```transform_kwargs = {'memory_eff':True}```), default True at the moment.
-- disable edge outputs if no buffer could be applied and the wavelet decomposition is influences by the cone of influence. Can be disabled using (```load_kwargs = {safe_load':False}```).
+- disable edge calculations and outputs if no buffer could be applied and the wavelet decomposition is influences by the cone of influence. Can be disabled using (```load_kwargs = {safe_load':False}```).
 - more output settings ```output_kwargs```: ```save_big_file (bool, default False)```: Should ONE file be saved containing all cospectra, additionally to the files in the ```wavelet_full_cospectra``` folder and the setting ```integrate_all_files (bool, default True)``` Should ALL files in folder ```wavelet_full_cospectra``` be integrated or only the onces recently processed.
 - some minor bug fixes
 - additional documentation about several functions
@@ -86,7 +87,7 @@ waveletec.process(datetimerange, fileduration, input_path, acquisition_frequency
 ```
 The documentation of process is:
 ``` python
-"""
+    """
     function: process data. (1) gets data, (2) performs wavelet transform, (3) cross calculate variables using conditional_sampling, (4) averages, (5) saves. Implemented as loops to prevent RAM overflow.
     
     call: process()
@@ -114,11 +115,14 @@ The documentation of process is:
             * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant as well as correlation coefficients. Note that this setting doubles the amount of averaged data stored.
             * cols_t_stat (list, default see explanation): If method statistics are calculated, then the column names can be given as list over which the time fraction and scale of sampled events are being calculated. By default its all conditionally sampled columns.
             * cols_corr (list, default see explanation): If method statistics are calculated, then the column names can be given as list between which the correlation coefficient is calculated. By default its all unique variables specified within the argument covariance.
-           * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
+            * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
             * save_big_file (bool, default False): Should ONE file be saved containing all cospectra, additionally to the files in the wavelet_full_cospectra folder
             * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
         * load_kwargs:
             * handle_bmmflux_raw_dataset (bool, default False): Was bmmflux used for pre-processing?
+            * safe_load (bool, default True): If True disable calculations and outputs if no full buffer could be applied and the wavelet decomposition is influences by the cone of influence.
+            * fill_with_NA (bool, default True): If the data is not continous, shall it be filled with NA, to make the timestamps continous. 
+            * max_gap (int, default 2*60*60): Allowed maximum gap in the data in seconds. If larger, an error is raised.
         * transform_kwargs:
             * nan_tolerance (float, default .1): Specify amount of NaN values, gapfilled, allowed inside the average_period. If more, the respective variable get set NaN for this average_period, also in the high frequency output. To output all data set to 1. Additionally, warning is called if more NaN than nan_tolerance in the whole processed data.
             * memory_eff (bool, default True): If False, fast but memory-heavy algorithm is used to combine all decomposed data. Otherwise memory-light but slow algorithm is used.

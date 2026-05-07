@@ -376,6 +376,7 @@ def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True,
 
 def loaddatawithbuffer(d0, d1=None, freq=None, buffer=None, 
                        tname="TIMESTAMP", f_freq=30, sort=True, safe_load=True,
+                       max_gap=0,
                        **kwargs):
     """
     Load data with buffer.
@@ -385,7 +386,10 @@ def loaddatawithbuffer(d0, d1=None, freq=None, buffer=None,
     buffer: buffer in seconds
     tname: name of the timestamp column
     f_freq: frequency of the data in minutes
-    kwargs: other arguments to pass to the function"""
+    safe_load: If the buffer could not be applied, no data is loaded
+    max_gap: Maximum gap in the data in seconds. Its added to the available buffer time as it is filled with NaN in the function check_continous_data
+    kwargs: other arguments to passed to the function
+    """
     logger = logging.getLogger('waveletec.read_data.loaddatawithbuffer')
     
     #logger.debug(f'f_freq is {f_freq}')
@@ -421,8 +425,18 @@ def loaddatawithbuffer(d0, d1=None, freq=None, buffer=None,
     
     if buffer:
         if safe_load: # only use data if buffer could be loaded otherwise return empty data.
-            if data.data[tname].iloc[0] > datarange.min() or data.data[tname].iloc[-1] < datarange.max():
-                logger.warning("Buffer data could not be loaded (fully):")
+           
+            # If for the function check_continous_data a max_gap is defined,
+            # we can also subtract/add it for our maximum buffer data her
+            # as it doesnt make a difference if the gap is in the middle or
+            # at the beginning/end of the data.
+            add_time = pd.Timedelta(seconds=max_gap)
+            
+            if (data.data[tname].iloc[0] - add_time) > datarange.min() or (data.data[tname].iloc[-1] + add_time) < datarange.max():
+                logger.debug(f"data.data[tname].iloc[0] - add_time: {data.data[tname].iloc[0] - add_time}")
+                logger.debug(f"data.data[tname].iloc[-1] + add_time: {data.data[tname].iloc[-1] + add_time}")
+                
+                logger.error("Buffer data could not be loaded (fully):")
                 logger.warning(f"Possible data starts with {data.data[tname].iloc[0]} and ends with {data.data[tname].iloc[-1]}, but necessary is the range {datarange.min()} to {datarange.max()}.")
                 logger.warning(f"Please adjust the datetimerange, to be able to load additional data in front and after the datetimerange, accounting for a buffer of {buffer}s.")
                 logger.warning("To prevent misleading output data, this chunk is skipped.")
@@ -441,4 +455,79 @@ def loaddatawithbuffer(d0, d1=None, freq=None, buffer=None,
         return data.data
     else:
         return pd.DataFrame()
+
+
+def check_continous_data(data, dt, fill_with_NA=True, max_gap=2*60*60):
+    """
+    function: checks if the provided data timestamp is continous. If not, it may be filled, or an error is raised for too large gaps.
+    call: check_continous_data()
+    Input:
+        * data (pandas.DataFrame): The data to check. Need to contain a column "TIMESTAMP"
+        * dt (float): Data aquisition time stamp gap. Should be 1/aquisition_frequency.
+        * fill_with_NA (bool, default True): If the data is not continous, shall it be filled with NA, to make the timestamps continous. 
+        * max_gap (int, default 2*60*60): Allowed maximum gap in the data in seconds. If larger, an error is raised and the function returns None.
+    Return:
+        * data (pandas.DataFrame): The continous dataframe in case of fill_with_NA=True. Otherwise the original dataframe. In case of a gap to large None is returned.
+    """
+    
+    logger = logging.getLogger('waveletec.read_data.check_continous_data')
+    logger.debug("Starting to check if loaded data is continous in its timestamp")
+    
+    if data is None:
+        logger.warning("Received 'None' as data. Skipping continuity check.")
+        return None
+
+    assert "TIMESTAMP" in data.columns, "No TIMESTAMP column in the data."
+    
+    data["TIMESTAMP"] = pd.to_datetime(data["TIMESTAMP"])
+    time_diffs = data["TIMESTAMP"].diff().dropna()
+    expected_delta = pd.Timedelta(seconds=dt)
+    
+    is_discontinuous = abs((time_diffs - expected_delta).dt.total_seconds()) > 1e-5
+    
+    gap_count = is_discontinuous.sum()
+    
+    if gap_count > 0:
+        logger.warning(f"Data timestamp is not continuous! Found {gap_count} gap(s).")
+        # Find the index where it breaks
+        gap_indices = is_discontinuous.index[is_discontinuous]
+        for idx in gap_indices:
+            gap_end = data.loc[idx, "TIMESTAMP"]
+            gap_start = data.loc[idx - 1, "TIMESTAMP"] # The last good timestamp
+            
+            logger.warning(f"Data missing between {gap_start} and {gap_end}")
+            
+            duration = (gap_end - gap_start).total_seconds()
+            if duration > max_gap:
+                logger.error(f"CRITICAL GAP: {duration} seconds of data timestamp missing!")
+                logger.warning("Returning None. This will cause this data chunk to be skipped.")
+                return None
+                
+        if fill_with_NA:
+            start = data["TIMESTAMP"].min()
+            end = data["TIMESTAMP"].max()
+            perfect_index = pd.date_range(start=start, end=end, freq=f"{dt}s")
+            data_filled = (data
+                           .set_index("TIMESTAMP")
+                           .reindex(perfect_index)
+                           .reset_index()
+                           .rename(columns={'index': "TIMESTAMP"}))
+            logger.debug("Produced a continous dataframe filling with missing timestamps with NaN.")
+            return data_filled
+        else:
+            return data
+        
+    else:
+        logger.debug("Data continuity check passed.")
+        return data
+    
+    
+
+
+
+
+
+
+
+
 
