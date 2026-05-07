@@ -23,7 +23,7 @@ This fork by Daniel Schöndorf contains some additions:
 - disable edge calculations and outputs if no buffer could be applied and the wavelet decomposition is influences by the cone of influence. Can be disabled using (```load_kwargs = {safe_load':False}```).
 - more output settings ```output_kwargs```: ```save_big_file (bool, default False)```: Should ONE file be saved containing all cospectra, additionally to the files in the ```wavelet_full_cospectra``` folder and the setting ```integrate_all_files (bool, default True)``` Should ALL files in folder ```wavelet_full_cospectra``` be integrated or only the onces recently processed.
 - some minor bug fixes
-- additional documentation about several functions
+- many additional documentation about several functions
 - additional warnings if the target integration frequency is far away from the integration performed in reality, because of discrete frequency bands.
 - differently aggregate the quality control indicators and the method statistics during integration algorithms (taking the mean instead of the sum over the frequencies for those)
 
@@ -99,12 +99,12 @@ The documentation of process is:
         * acquisition_frequency (int): frequency of the data in Hz. Used as dt = 1/acquisition_frequency. Used to calculate the sampling frequency fs for wavelet decomposition inside of decompose_data() and then passed to universal_wt().
         * covariance (list, default: None): variables to be considered in the calculations as strings in a list. * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]. In this example, "w*co2|w*h2o" means: conditionally sample w*co2 depending on w*co2 and w*h2o. This produces the columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, which mean e.g. in the case wco2+wh2o+ that wco2 is sampled when wco2 is positive AND wh2o is positive.
         * cond_samp_both (bool, default True): If True both parts of the formula are conditionally sampled. If False, only the leading part of the formula is sampled. E.g. if False in case of 'w*co2|w*h2o', we get the output columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, stating wco2 being conditionally sampled e.g. for wco2+wh2o+ when wco2 is positiv AND wh2o is positive. If True, we get the output columns wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco2-wh2o-,wh2o+wco2+,wh2o+wco2-,wh2o-wco2+,wh2o-wco2-, hence, we get both, wco2 and wh2o conditionally sampled.
-        * output_folderpath (str, default: None): path to the folder where the output is saved.
+        * output_folderpath (str, default: None): path to the folder where the output is to be saved. If None, no output is saved but just returned by the function, no integration or partitioning are then possible (see below).
         * overwrite (bool, default False): if files can be overriden. If True, output files not get overriden and no calculation is performed for these data.
-        * high_frq_output (bool, default False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage.
+        * high_frq_output (bool, default False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage. Necessary to have output_folderpath specified for this.
         * processing_time_duration (str, default "1d"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM. Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
-        * integration_period (int, default None): minimum integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed.
-        * partition (list, default None): Gives if ET and/or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this.
+        * integration_period (int, default None): minimum integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed. Integration with this function is only possible if output_folderpath is set.
+        * partition (list, default None): Gives if ET and/or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this. Partitioning in this function is only possible if an output_folderpath is set.
         * method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
         * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d. Passed to the main function.
         * sitename (str, default "00000"): Sitename, files get named accordingly.
@@ -131,7 +131,7 @@ The documentation of process is:
             * pTq_cols (list, default []): List of column names necesary to perfrom density correction: pressure, sonic temperature, and water vapor, e.g. ["Pressure", "Ts", "h2o"]. Temperature in °C, pressure in kPa, water vapor in mmol/m3. If load_kwargs = {'handle_bmmflux_raw_dataset':True} it is set automatically to ["Pressure", "Ts", "h2o"] if no input is given.
             * average_period (str, default not defined): Average period for density correction, given as pandas time string, e.g. "30min". If not specified the default average_period defined as argument above is taken.
     Return:
-        fulldata (pandas.DataFrame): Containing all processed data. If integration_period is specified already integrated.
+        fulldata (pandas.DataFrame): Containing all processed data. If integration_period is specified already integrated. If partition, then also already partitioned. Set both to None to receive just the averaged data (but not integrated nor partitioned). 
     
     """
 ```

@@ -917,12 +917,12 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         * acquisition_frequency (int): frequency of the data in Hz. Used as dt = 1/acquisition_frequency. Used to calculate the sampling frequency fs for wavelet decomposition inside of decompose_data() and then passed to universal_wt().
         * covariance (list, default: None): variables to be considered in the calculations as strings in a list. * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]. In this example, "w*co2|w*h2o" means: conditionally sample w*co2 depending on w*co2 and w*h2o. This produces the columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, which mean e.g. in the case wco2+wh2o+ that wco2 is sampled when wco2 is positive AND wh2o is positive.
         * cond_samp_both (bool, default True): If True both parts of the formula are conditionally sampled. If False, only the leading part of the formula is sampled. E.g. if False in case of 'w*co2|w*h2o', we get the output columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, stating wco2 being conditionally sampled e.g. for wco2+wh2o+ when wco2 is positiv AND wh2o is positive. If True, we get the output columns wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco2-wh2o-,wh2o+wco2+,wh2o+wco2-,wh2o-wco2+,wh2o-wco2-, hence, we get both, wco2 and wh2o conditionally sampled.
-        * output_folderpath (str, default: None): path to the folder where the output is saved.
+        * output_folderpath (str, default: None): path to the folder where the output is to be saved. If None, no output is saved but just returned by the function, no integration or partitioning are then possible (see below).
         * overwrite (bool, default False): if files can be overriden. If True, output files not get overriden and no calculation is performed for these data.
-        * high_frq_output (bool, default False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage.
+        * high_frq_output (bool, default False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage. Necessary to have output_folderpath specified for this.
         * processing_time_duration (str, default "1d"): Time duration over which the calculation is perfomed in a loop. Important setting to prevent overflowing of RAM. Format: pandas time offset string, e.g. "3h". Possible specifications are s, min, h, d.
-        * integration_period (int, default None): minimum integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed.
-        * partition (list, default None): Gives if ET and/or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this.
+        * integration_period (int, default None): minimum integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as f0 = 1/integration_period) inside integrate_cospectra(). From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed. Integration with this function is only possible if output_folderpath is set.
+        * partition (list, default None): Gives if ET and/or NEE should be partitioned. Set as strings in a list, e.g. ["ET", "NEE"], or in case only NEE: ["NEE"]. Necessary to set an integration_period for this. Partitioning in this function is only possible if an output_folderpath is set.
         * method (str, default "dwt"): One of 'dwt', 'cwt', 'fcwt', passed as kwargs to the functions main() and decompose_data().
         * average_period (str, default '30min'): Averaging period for averaging the wavelet decompositioned values. Format: pandas time string, e.g. "30min". Possible specifications are s, min, h, d. Passed to the main function.
         * sitename (str, default "00000"): Sitename, files get named accordingly.
@@ -949,7 +949,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
             * pTq_cols (list, default []): List of column names necesary to perfrom density correction: pressure, sonic temperature, and water vapor, e.g. ["Pressure", "Ts", "h2o"]. Temperature in °C, pressure in kPa, water vapor in mmol/m3. If load_kwargs = {'handle_bmmflux_raw_dataset':True} it is set automatically to ["Pressure", "Ts", "h2o"] if no input is given.
             * average_period (str, default not defined): Average period for density correction, given as pandas time string, e.g. "30min". If not specified the default average_period defined as argument above is taken.
     Return:
-        fulldata (pandas.DataFrame): Containing all processed data. If integration_period is specified already integrated.
+        fulldata (pandas.DataFrame): Containing all processed data. If integration_period is specified already integrated. If partition, then also already partitioned. Set both to None to receive just the averaged data (but not integrated nor partitioned). 
     
     """
     logger = logging.getLogger('waveletec.handlers.process')
@@ -1079,7 +1079,8 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         # with open(, 'w+') as stp:
         #     yaml.safe_dump(local_args, stp)
     else:
-        output_pathmodel = ""
+        # output_pathmodel = ''
+        output_pathmodel_hf = None
     
     logger.debug(f'Output path: {output_pathmodel}.')
     
@@ -1088,7 +1089,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
     
     fulldata = pd.DataFrame()
     info_t_start = time.time()
-    logger.info(f'In load_main.')
+    logger.info('In load_main.')
 
     print(f'\nRUNNING WAVELET TRANSFORM ({method})')
     
@@ -1186,7 +1187,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
 
         try:
             # main run
-            output_path = output_pathmodel.format("{}")
+            output_path = output_pathmodel.format("{}") if output_pathmodel else None
             if output_pathmodel_hf:
                 output_path_hf = output_pathmodel_hf.format("{}")
                 output_kwargs_yl['output_path_hf'] = output_path_hf + '.part'
@@ -1196,7 +1197,10 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
             #                 output_kwargs=output_kwargs_yl, **transform_kwargs)
             
             # run by varstorun
-            output_kwargs_yl.update({'output_path': output_path + '.part'})
+            if output_path:
+                output_kwargs_yl.update({'output_path': output_path + '.part'})
+            else:
+                output_kwargs_yl.update({'output_path': None})
             allvars = transform_kwargs['varstorun']
             logger.debug(f"Allvars that get looped through: {allvars}")
             saved_files = []
@@ -1215,12 +1219,13 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
                 fulldata = pd.concat([fulldata, output.data], axis=0)
             
             # at the end of the chunk of data change file name to csv to make clear those are finished
-            for f in [s for s_ in saved_files for s in s_]: # normal output
-                if os.path.exists(f):
-                    os.rename(f, f.replace('.part', ''))
-            for f in [s for s_ in saved_files_hf for s in s_]: # and high frequency output
-                if os.path.exists(f):
-                    os.rename(f, f.replace('.part', ''))
+            if output_pathmodel:
+                for f in [s for s_ in saved_files for s in s_]: # normal output
+                    if os.path.exists(f):
+                        os.rename(f, f.replace('.part', ''))
+                for f in [s for s_ in saved_files_hf for s in s_]: # and high frequency output
+                    if os.path.exists(f):
+                        os.rename(f, f.replace('.part', ''))
         except Exception as e:
             logger.critical(e)
             print(str(e))
@@ -1244,7 +1249,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         #    output_pathmodel.format(run_time)))
         
         if output_kwargs.get('save_big_file', False):
-            dst_path = os.path.join(output_folderpath + str(sitename) + f"_CDWT_fulldata_" + run_time + ".csv")
+            dst_path = os.path.join(output_folderpath + str(sitename) + "_CDWT_fulldata_" + run_time + ".csv")
             # save all data in one big file?
             fulldata.to_csv(dst_path, index=False)
             
@@ -1271,7 +1276,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
         # Partitioning
         if partition:
             if integration_period:
-                print(f'\n Partitioning of integrated wavelet flux.')
+                print('\n Partitioning of integrated wavelet flux.')
                 if "NEE" in partition:
                     NEE = True
                 else:
@@ -1294,6 +1299,9 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
                                         variables_available=av_var)
             else:
                 logger.warning("Integration period not set but wanted to partion. This is not possible.")
+    else:
+        if not output_pathmodel and (partition or integration_period):
+            print('\n Wanted to partition or integrate, BUT: No output_pathmodel was set. This is not possible.')
     logger.debug(f'\t\tFull process took {round(time.time() - info_t_start)} s (run_wt).')
     return fulldata
 
@@ -1402,7 +1410,7 @@ def main(data, varstorun, period=None, average_period='30min', nan_tolerance=0.1
 
     # calculate conditional sampling
     info_t_calc_cond_samp = time.time()
-    logger.debug(f'Starting _calculate_conditional_sampling_from_formula_.')
+    logger.debug('Starting _calculate_conditional_sampling_from_formula_.')
     wvcsp = pd.concat(
         # [wvvar[['TIMESTAMP', 'natural_frequency']]] +
         [_calculate_conditional_sampling_from_formula_(growingdata, f, cond_samp_both)
