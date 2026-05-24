@@ -59,7 +59,7 @@ python -m pip install -e .
 
 (Optional) Using conda in the pre-devined environment I used:
  ```
- conda create -f conda/environment.yml
+ conda env create -f conda/environment.yml
  conda activate wavec2
  ```
 If you want you can then also install WaveletEC in there or just run from script.
