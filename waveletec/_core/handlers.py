@@ -306,7 +306,12 @@ def _clean_average_period_(data, average_period="30min", nan_tolerance=.1):
 
 
 def integrate_cospectra(data, f0, dst_path=None, calc_na=False,
-                        variables_to_mean=("_t_fract", "_t_scale", "_qc", "_r")):
+                        variables_to_mean=("_t_fract", "_t_scale", "_qc", "_r"),
+                        qaqc=True,
+                        f_low=1/3276, # almost up to one hour, 
+                        # This includes the wavelet scale which ends at 54.6133333 minutes,
+                        # hence, 3276.8 seconds, hence 3.051758e-04 Hz.
+                        n_smallint=6):
     logger = logging.getLogger('waveletec.handlers.integrate_cospectra')
     # logger.debug(f"Integrate cospectra with f0 = {f0}")
     
@@ -347,7 +352,15 @@ def integrate_cospectra(data, f0, dst_path=None, calc_na=False,
                 logger.info(f"Specified integration frequency was {f0} Hz ({1/f0} s as period duration). From available frequencies of the wavelet transform integrate from highest frequency up to INCLUDING the frequency band from {max_band_high_freq} Hz ({1/max_band_high_freq} s) to {max_band_low_freq} Hz ({1/max_band_low_freq} s).")
         else:
             logger.warning(f"Specified integration frequency was {f0} Hz ({1/f0} s as period duration). This is already the highest frequency of either the lowest or the highest available frequency band of the wavelet transform. Please make sure you know what you're doing.")
-        
+    
+    # Statistics
+    if qaqc:
+        stats_df = pttET.int_tests(data, f0, n_smallint, f_low, variables_to_mean, calc_na)
+        stats_df = stats_df[['variable', 'TIMESTAMP', 'STA', 'OG', 'QAQC_STA', 'QAQC_OG']]
+        stats_wide = stats_df.pivot(index='TIMESTAMP', columns='variable', values=['STA', 'OG', 'QAQC_STA', 'QAQC_OG'])
+        stats_wide.columns = [f"{var}_{stat}" for stat, var in stats_wide.columns]
+        stats_wide = stats_wide.reset_index()
+    
     # only integrates up to the specified frequency f0
     data0 = (data[(np.isnan(data['natural_frequency']) == False) & (data['natural_frequency'] >= f0)]
              .groupby(['variable', 'TIMESTAMP'])
@@ -364,17 +377,25 @@ def integrate_cospectra(data, f0, dst_path=None, calc_na=False,
     datai = (pd.concat([data1[np.isin(
         data1['variable'], data0['variable'].unique()) == False], data0])
         .drop_duplicates())
-    datai = datai.pivot_table('value', 'TIMESTAMP',
-                              'variable').reset_index(drop=False)
+    
+    datai_wide = datai.pivot_table('value', 'TIMESTAMP', 'variable').reset_index(drop=False)
+    
+    if qaqc:
+        result_wide_table = datai_wide.merge(stats_wide, on='TIMESTAMP', how='left')
+    else:
+        result_wide_table = datai_wide
 
     if dst_path:
         logger.debug(f"Writing cospectra with f0 = {f0} to file {dst_path}")
-        datai.to_file(dst_path, index=False, na_rep="NaN")
-    return datai
+        result_wide_table.to_file(dst_path, index=False, na_rep="NaN")
+    return result_wide_table
 
 def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_', 
                                   dst_path=None, calc_na=False,
-                                  variables_to_mean=("_t_fract", "_t_scale", "_qc", "_r")):
+                                  variables_to_mean=("_t_fract", "_t_scale", "_qc", "_r"),
+                                  qaqc=True,
+                                  f_low=1/3276,
+                                  n_smallint=6):
     """
     function: integrate cospectra from output files of process() (or main()) into a file.
     call: integrate_cospectra_from_file()
@@ -385,6 +406,9 @@ def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_',
         * dst_path (str, default None): Path to destination file to save the integrated data.
         * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
         * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc", "_r")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
+        * qaqc (bool, default True): If True during integration, the stationarity test for wavelet-based EC (STA) and the ogive test (OG) are performed.
+        * f_low (float, default 1/3276): The lower frequency for the ogive test. The default is almost up to one hour. This usually includes the scale which ends at 55 minutes, but not more.
+        * n_smallint (int, default 6): For the stationarity test, the ratio of the period duration of the lower integration period (T* < T) to the normal period duration (T = 1/f0). Typically 6, following the traditional Stationarity test (5min/30min).
     Return:
         The integrated cospectrum. Also file saved accordingly.
     """
@@ -415,7 +439,10 @@ def integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_',
         data = root
     
     return integrate_cospectra(data, f0, dst_path=dst_path, calc_na=calc_na,
-                               variables_to_mean=variables_to_mean)
+                               variables_to_mean=variables_to_mean,
+                               qaqc=qaqc,
+                               f_low=f_low,
+                               n_smallint=n_smallint)
 
 
 
@@ -424,7 +451,10 @@ def integrate_full_spectra_into_file(site_name, output_folderpath,
                                      pattern='_CDWT_full_cospectra_([0-9]{12})_', 
                                      newlog=False,
                                      calc_na=False,
-                                     variables_to_mean=("_t_fract", "_t_scale", "_qc", "_r")):
+                                     variables_to_mean=("_t_fract", "_t_scale", "_qc", "_r"),
+                                     qaqc=True,
+                                     f_low=1/3276,
+                                     n_smallint=6):
     """
     function: integrate cospectra from output files of process() (or main()) into a file.
     status: not necessary, please JUST USE integrate_cospectra_from_file instead.
@@ -439,6 +469,9 @@ def integrate_full_spectra_into_file(site_name, output_folderpath,
         * newlog (bool, default False): if new log file in the subfolder log inside the output_folderpath is created using start_logging(). Useful if the function integrate_full_spectra_into_file() is called on its own, e.g. outside of eddypro_wavelet_run or with time delay after the function process().
         * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
         * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc", "_r")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
+        * qaqc (bool, default True): If True during integration, the stationarity test for wavelet-based EC (STA) and the ogive test (OG) are performed.
+        * f_low (float, default 1/3276): The lower frequency for the ogive test. The default is almost up to one hour. This usually includes the scale which ends at 55 minutes, but not more.
+        * n_smallint (int, default 6): For the stationarity test, the ratio of the period duration of the lower integration period (T* < T) to the normal period duration (T = 1/f0). Typically 6, following the traditional Stationarity test (5min/30min).
     Return:
         No return.
     """
@@ -460,7 +493,10 @@ def integrate_full_spectra_into_file(site_name, output_folderpath,
                                           pattern='_CDWT_full_cospectra_([0-9]{12})_', 
                                           dst_path=dst_path,
                                           calc_na=calc_na,
-                                          variables_to_mean=variables_to_mean)
+                                          variables_to_mean=variables_to_mean,
+                                          qaqc=qaqc,
+                                          f_low=f_low,
+                                          n_smallint=n_smallint)
 
 
 def decompose_variables(data, variables=['w', 'co2'], method='dwt', 
@@ -936,6 +972,9 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
             * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
             * save_big_file (bool, default False): Should ONE file be saved containing all cospectra, additionally to the files in the wavelet_full_cospectra folder
             * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
+            * qaqc (bool, default True): If True during integration, the stationarity test for wavelet-based EC (STA) and the ogive test (OG) are performed.
+            * f_low (float, default 1/3276): The lower frequency for the ogive test. The default is almost up to one hour. This usually includes the scale which ends at 55 minutes, but not more.
+            * n_smallint (int, default 6): For the stationarity test, the ratio of the period duration of the lower integration period (T* < T) to the normal period duration (T = 1/f0). Typically 6, following the traditional Stationarity test (5min/30min).
         * load_kwargs:
             * handle_bmmflux_raw_dataset (bool, default False): Was bmmflux used for pre-processing?
             * safe_load (bool, default True): If True disable calculations and outputs if no full buffer could be applied and the wavelet decomposition is influences by the cone of influence.
@@ -1264,7 +1303,10 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
                 fulldata = integrate_cospectra_from_file(
                     root=os.path.join(output_folderpath, 'wavelet_full_cospectra/'), 
                     f0=1/integration_period,
-                    dst_path=dst_path
+                    dst_path=dst_path,
+                    qaqc=output_kwargs.get('qaqc', True),
+                    f_low=output_kwargs.get('f_low', 1/3276),
+                    n_smallint=output_kwargs.get('n_smallint', 6)
                     )
                 logger.debug(f'File with all integrated fluxes saved as {dst_path}.')
             else:

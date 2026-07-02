@@ -16,6 +16,7 @@ This fork by Daniel Schöndorf contains some additions:
 - reading bmmflux high-frequency corrected output files
 - density correction for open-path analysers (be careful with units of input variables, currently best adjusted to bmmflux output)
 - calculating the time fraction and scale of the events conditionally sampled in each quadrant and the correlation coefficient for each frequency
+- output of quality control metrics, the stationarity test for wavelet-based Eddy Covariance proposed by Coimbra et al. 2025 and the Integration Scale Test.
 - save high-frequency output to files automatically (```high_frq_output=True```)
 - setting an NaN threshold (```nan_tolerance```), for which no output is created per averaging time (```transform_kwargs = {'nan_tolerance':0.1}```).
 - checking the loaded data for continuity in its timestamps and creating data with continous time stamps filled with ```NaN``` (```load_kwargs = {'fill_with_NA':True}```). If the data contains a gap too large (```load_kwargs = {'max_gap':2*60*60}```), the data chunk is skipped.
@@ -87,7 +88,7 @@ waveletec.process(datetimerange, fileduration, input_path, acquisition_frequency
 ```
 The documentation of process is:
 ``` python
-    """
+     """
     function: process data. (1) gets data, (2) performs wavelet transform, (3) cross calculate variables using conditional_sampling, (4) averages, (5) saves. Implemented as loops to prevent RAM overflow.
     
     call: process()
@@ -118,6 +119,9 @@ The documentation of process is:
             * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
             * save_big_file (bool, default False): Should ONE file be saved containing all cospectra, additionally to the files in the wavelet_full_cospectra folder
             * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
+            * qaqc (bool, default True): If True during integration, the stationarity test for wavelet-based EC (STA) and the ogive test (OG) are performed.
+            * f_low (float, default 1/3276): The lower frequency for the ogive test. The default is almost up to one hour. This usually includes the scale which ends at 55 minutes, but not more.
+            * n_smallint (int, default 6): For the stationarity test, the ratio of the period duration of the lower integration period (T* < T) to the normal period duration (T = 1/f0). Typically 6, following the traditional Stationarity test (5min/30min).
         * load_kwargs:
             * handle_bmmflux_raw_dataset (bool, default False): Was bmmflux used for pre-processing?
             * safe_load (bool, default True): If True disable calculations and outputs if no full buffer could be applied and the wavelet decomposition is influences by the cone of influence.
@@ -182,7 +186,10 @@ import waveletec
 
 waveletec.integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9]+)_', 
                                   dst_path=None, calc_na=False,
-                                  variables_to_mean=("_t_fract", "_t_scale", "_qc")):
+                                  variables_to_mean=("_t_fract", "_t_scale", "_qc"),
+                                  qaqc=True,
+                                  f_low=1/3276,
+                                  n_smallint=6):
 """
     function: integrate cospectra from output files of process() (or main()) into a file.
     call: integrate_cospectra_from_file()
@@ -192,7 +199,10 @@ waveletec.integrate_cospectra_from_file(root, f0, pattern='_full_cospectra_([0-9
         * f0 (int, default None): Works as a high-pass filter for the wavelet cospectra (see similar process function f0 = 1/integration_period) inside integrate_cospectra(). From available frequency bands the the band containing the target frequency is taken fully. Hence, integrating takes potentially also more (lower) frequencies into account than targeted. Please look at the log output to see up to which frequency integration was performed.
         * dst_path (str, default None): Path to destination file to save the integrated data.
         * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
-        * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
+        * variables_to_mean (tuple, default ("_t_fract", "_t_scale", "_qc", "_r")): variable names endings that are to be averaged instead of summed during the integration. Necessary for time fraction and scale of sampled events and quality control.
+        * qaqc (bool, default True): If True during integration, the stationarity test for wavelet-based EC (STA) and the ogive test (OG) are performed.
+        * f_low (float, default 1/3276): The lower frequency for the ogive test. The default is almost up to one hour. This usually includes the scale which ends at 55 minutes, but not more.
+        * n_smallint (int, default 6): For the stationarity test, the ratio of the period duration of the lower integration period (T* < T) to the normal period duration (T = 1/f0). Typically 6, following the traditional Stationarity test (5min/30min).
     Return:
         The integrated cospectrum. Also file saved accordingly.
     """

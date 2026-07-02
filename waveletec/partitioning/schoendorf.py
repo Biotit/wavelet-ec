@@ -145,7 +145,7 @@ def time_fraction(data, group_cols):
     logger.debug(f'Calculating time fraction, data is {data}')
     
     time_frac = (data.groupby(group_cols)
-                 .agg(lambda x: x.astype(bool).mean())
+                 .agg(lambda x: x.dropna().astype(bool).mean())
                  .add_suffix("_t_fract")
                  .reset_index()
                  #.sort_values(by=["TIMESTAMP_av", "natural_frequency"])
@@ -173,14 +173,16 @@ def time_scales(df, group_cols, dt, threshold=10):
     # remove TIMESTAMP and natural_frequency from target columns
     target_cols = [c for c in df.columns if c not in group_cols + ['local_idx']]
     for col in target_cols:
-        # Identify where non-zero values are
-        is_nz = df[col] != 0
+        # Identify where non-zero values are that are not NaN
+        is_nz = (df[col] != 0) & df[col].notna()
         
         # Get the index of every non-zero row
         nz_indices = df.index[is_nz]
         
-        if len(nz_indices) == 0:
-            results[col + "_t_scale"] = df.groupby(group_cols).size().astype(float) * 0
+        if len(nz_indices) == 0:            
+            # If all were NaN, set to NaN, if there were data but just no events take 0.0
+            valid_counts = df.groupby(group_cols)[col].count()
+            results[col + "_t_scale"] = pd.Series(np.where(valid_counts == 0, np.nan, 0.0), index=valid_counts.index)
             continue
         
         # Identify the "starts" of events (where it goes from 0 to non-zero)
@@ -207,9 +209,14 @@ def time_scales(df, group_cols, dt, threshold=10):
         
         # Count the size of each event, then mean per group
         streak_counts = temp_nz.groupby(group_cols + ['event_id']).size()
-        results[col + "_t_scale"] = (streak_counts
-                                     .groupby(level=list(range(len(group_cols))))
-                                     .mean()) # level = list(range(len(group_cols))) to get rid of ['event_id'] as grouping because we want mean per grouping (TIMESTAMP + Frequency), not per event
+        calculated_means = (streak_counts
+                            .groupby(level=list(range(len(group_cols))))
+                            .mean()) # level = list(range(len(group_cols))) to get rid of ['event_id'] as grouping because we want mean per grouping (TIMESTAMP + Frequency), not per event
+        # Build smart defaults: NaN if the group was all-NaN, 0.0 if it had actual numbers (zeros)
+        valid_counts = df.groupby(group_cols)[col].count()
+        group_defaults = pd.Series(np.where(valid_counts == 0, np.nan, 0.0), index=valid_counts.index)
+        # Combine them: calculated means take priority; missing groups fall back to defaults
+        results[col + "_t_scale"] = calculated_means.combine_first(group_defaults)
     
     # logger.debug(f"results: {results}")
     results = pd.DataFrame(results).reset_index().melt(group_cols)
@@ -227,3 +234,179 @@ def time_scales(df, group_cols, dt, threshold=10):
 
 
 
+def int_tests(data, f0, n, f_low, variables_not, calc_na=False):
+    """
+    function: Calculates the Stationarity (STA), and Ogive Test (OG) and assigns stepped QA/QC flags. It checks for discrete wavelet frequency band overlaps and logs safety warnings accordingly.
+    call: int_tests()
+    Input:
+        * data (pandas.DataFrame): Long-format wavelet-decomposed data containing 'natural_frequency', 'variable', 'TIMESTAMP', and 'value' columns.
+        * f0 (float): Baseline integration frequency threshold (Hz).
+        * n (int or float): For the stationarity test, the ratio of the period duration of the lower integration period (T* < T) to the normal period duration (T = 1/f0). Typically 6, following the traditional Stationarity test (5min/30min).
+        * f_low (float): The lower frequency for the ogive test
+        * variables_not (str or tuple of str): Suffix or tuple of suffixes passed to .str.endswith() to exclude specific variables from calculation.
+        * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
+    Return:
+        The processed Pandas DataFrame containing integrated band sums, STA, OG and QAQC step flags (0 <= 30%, 1 <= 100%, 2 > 100%).
+    """
+    
+    logger = logging.getLogger('wvlt.partition.int_tests')
+    logger.debug("Calculating Stationarity and Integration Scale Test")
+    
+    # PRE-CALCULATION for Stationarity test
+    f_high = 1/((1/f0)/n) # higher frequency  
+    
+    # FILTER DATA TO RELEVANT VARIABLES
+    dataf = data[~data['variable'].str.endswith(variables_not)]
+    
+    # WARNINGS
+    # output a warning for f_high and f_low which dicrete wavelet level is taken for integration
+    freq = data['natural_frequency'].unique()
+    
+    if f_low <= freq.min():
+        logger.warning(
+            f"Specified lower frequency {f_low} Hz is below or equal to the lowest available "
+            f"wavelet frequency ({freq.min()} Hz). OG will integrate the entire spectrum. "
+            f"This can be fine, but please know what you're doing since it includes the approximation coefficient."
+        )
+    if f_low > freq.min():
+        # Filter arrays
+        higher_vals = freq[freq >= f_low]
+        lower_vals = freq[freq < f_low]
+        
+        lower_valsf0 = freq[freq < f0]
+        
+        # Safety check for edge cases
+        if higher_vals.size > 0 and lower_vals.size > 0:
+            max_band_high_freq = higher_vals.min() # highest frequency band: max frequency border
+            max_band_low_freq = lower_vals.max() # highest frequency band: min frequency border
+            
+            max_band_low_freqf0 = lower_valsf0.max()
+            
+            if max_band_low_freq == max_band_low_freqf0:
+                logger.warning(f"Specified lower integration frequency for OG was {f_low} Hz ({1/f_low} s as period duration). From available frequencies of the wavelet transform integrate from highest frequency up to INCLUDING the frequency band from {max_band_high_freq} Hz ({1/max_band_high_freq} s) to {max_band_low_freq} Hz ({1/max_band_low_freq} s). This corresponds to the same frequency band as the normal integration frequency f0 {f0}. The test will by definition equal to 0. Please decrease lower integration frequency f_low for OG to be corrsponding to a lower frequency band than f0. Lower than {max_band_low_freqf0}.")
+            
+            if (1/f_low) <= (((1/max_band_high_freq)+(1/max_band_low_freq))/2):
+                logger.warning(f"Specified lower integration frequency for OG was {f_low} Hz ({1/f_low} s as period duration). From available frequencies of the wavelet transform integrate from highest frequency up to INCLUDING the frequency band from {max_band_high_freq} Hz ({1/max_band_high_freq} s) to {max_band_low_freq} Hz ({1/max_band_low_freq} s). Please make sure you know what you're doing - potentially changing the integration frequency slightly below {max_band_high_freq} Hz ({1/max_band_high_freq} s) or {max_band_low_freq} Hz ({1/max_band_low_freq} s).")
+            else:
+                logger.info(f"Specified lower integration frequency for OG was {f_low} Hz ({1/f_low} s as period duration). From available frequencies of the wavelet transform integrate from highest frequency up to INCLUDING the frequency band from {max_band_high_freq} Hz ({1/max_band_high_freq} s) to {max_band_low_freq} Hz ({1/max_band_low_freq} s).")
+        else:
+            logger.warning(f"Specified lower integration frequency for OG was {f_low} Hz ({1/f_low} s as period duration). This is already the highest frequency of either the lowest or the highest available frequency band of the wavelet transform. Please make sure you know what you're doing.")
+    
+
+    # STATIONARITY TEST
+    # normal integration
+    data0 = (dataf[(np.isnan(dataf['natural_frequency']) == False) * (dataf['natural_frequency'] >= f0)]
+        .groupby(['variable', 'TIMESTAMP'])['value']
+        .agg(lambda x: x.sum(skipna=calc_na))
+        .reset_index()
+        .rename(columns={'value': 'value_f0'})
+        .set_index(['variable', 'TIMESTAMP'])
+        )
+    
+    # integration only up to higher frequency f_high
+    data1 = (dataf[(np.isnan(dataf['natural_frequency']) == False) * (dataf['natural_frequency'] >= f_high)]
+        .groupby(['variable', 'TIMESTAMP'])['value']
+        .agg(lambda x: x.sum(skipna=calc_na))
+        .reset_index()
+        .rename(columns={'value': 'value_f_high'})
+        .set_index(['variable', 'TIMESTAMP'])
+        )
+    
+    # INTEGRATION SCALE TEST (adjusted ogive test with absolute values)
+    # normal integration with ABSOLUTE values
+    # data0_abs = (dataf[(np.isnan(dataf['natural_frequency']) == False) * (dataf['natural_frequency'] >= f0)]
+    #     .groupby(['variable', 'TIMESTAMP'])['value']
+    #     .agg(lambda x: abs(x).sum(skipna=calc_na))
+    #     .reset_index()
+    #     .rename(columns={'value': 'value_f0_abs'})
+    #     .set_index(['variable', 'TIMESTAMP'])
+    #     )
+    
+    # integrate up to smaller frequency f_low, but with ABSOLUTE values
+    # data2 = (dataf[(np.isnan(dataf['natural_frequency']) == False) * (dataf['natural_frequency'] >= f_low)]
+    #     .groupby(['variable', 'TIMESTAMP'])['value']
+    #     .agg(lambda x: abs(x).sum(skipna=calc_na))
+    #     .reset_index()
+    #     .rename(columns={'value': 'value_f_lowabs'})
+    #     .set_index(['variable', 'TIMESTAMP'])
+    #     )
+    
+    # OGIVE TEST
+    # Ogive test, similar to Charuchittipan 2014, Foken 2006
+    # Filter for the low frequency band to integrate: f_low <= frequency < f0
+    data_ot_filtered = dataf[(np.isnan(dataf['natural_frequency']) == False) & 
+                             (dataf['natural_frequency'] >= f_low) & 
+                             (dataf['natural_frequency'] < f0)]
+    data_ot_sorted = data_ot_filtered.sort_values(by='natural_frequency', ascending=False)
+    
+    # Helper function to track cumulative max safely matching calc_na setup
+    def calc_ot_max(x):
+        if not calc_na and x.isna().any():
+            # If not calc_na and there is a NaN in there, all just NaN
+            return np.nan
+        # If calc_na, calculate with remaining values, if not calc_na and were here, just take all values
+        cleaned = x.dropna() if calc_na else x
+        if cleaned.empty:
+            # If no values in the cleaned, just take 0 if calc_na, otherwise NaN
+            return 0.0 if calc_na else np.nan
+        # Calculate ogive using cumsum, take the absolute of it for max calculation
+        return cleaned.cumsum().abs().max()
+    
+    data_ot_res = (data_ot_sorted.groupby(['variable', 'TIMESTAMP'])['value']
+        .agg(calc_ot_max)
+        .reset_index()
+        .rename(columns={'value': 'max_abs_cumsum'})
+        .set_index(['variable', 'TIMESTAMP'])
+        )
+    
+    # COMBINE DATA
+    # datanew = data0.join([data1, data2, data0_abs], how='inner').reset_index()
+    datanew = data0.join([data1], how='inner')
+    datanew = datanew.join(data_ot_res, how='left').reset_index()
+    
+    # CALCULATE STATISTICS
+    datanew['STA'] = abs((datanew['value_f_high'] - datanew['value_f0']) / datanew['value_f0']) * 100
+    # datanew['IST'] = (datanew['value_f_lowabs'] - datanew['value_f0_abs']) / datanew['value_f0_abs'] * 100
+    # Force any tiny negative floating-point noise (e.g. -0.0000000000000119009068481075) to be exactly 0
+    # datanew['IST'] = datanew['IST'].clip(lower=0)
+    datanew['OG'] = abs(datanew['max_abs_cumsum'] / datanew['value_f0']) * 100
+    
+    # QUALITY FLAGS
+    sta_conditions = [
+        datanew['STA'] <= 30,   # Condition 1 -> Flag 0
+        datanew['STA'] <= 100,  # Condition 2 -> Flag 1
+        datanew['STA'].notna()  # Condition 3 (Anything > 100 and not NaN) -> Flag 2
+    ]
+    sta_choices = [0, 1, 2]
+    datanew['QAQC_STA'] = np.select(sta_conditions, sta_choices, default=np.nan)
+    
+    # ist_conditions = [
+    #     datanew['IST'] <= 30,      # Condition 1 -> Flag 0
+    #     datanew['IST'] <= 100,     # Condition 2 -> Flag 1
+    #     datanew['IST'].notna()     # Condition 3 (Anything > 100 and not NaN) -> Flag 2
+    # ]
+    # ist_choices = [0, 1, 2]
+    # datanew['QAQC_IST'] = np.select(ist_conditions, ist_choices, default=np.nan)
+    
+    ot_conditions = [
+        datanew['OG'] <= 30,       # Condition 1 -> Flag 0
+        datanew['OG'] <= 100,      # Condition 2 -> Flag 1
+        datanew['OG'].notna()      # Condition 3 (Anything > 100 and not NaN) -> Flag 2
+    ]
+    ot_choices = [0, 1, 2]
+    datanew['QAQC_OG'] = np.select(ot_conditions, ot_choices, default=np.nan)
+    
+    logger.debug(f"datanew: {datanew}")
+    return datanew 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
