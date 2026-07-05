@@ -16,7 +16,7 @@ This fork by Daniel Schöndorf contains some additions:
 - reading bmmflux high-frequency corrected output files
 - density correction for open-path analysers (be careful with units of input variables, currently best adjusted to bmmflux output)
 - calculating the time fraction and scale of the events conditionally sampled in each quadrant and the correlation coefficient for each frequency
-- output of quality control metrics, the stationarity test for wavelet-based Eddy Covariance proposed by Coimbra et al. 2025 and the Integration Scale Test.
+- output of quality control metrics (```qaqc```), the stationarity test for wavelet-based Eddy Covariance proposed by Coimbra et al. 2025 and the ogive test (adjusted from Charuchittipan et al. 2014 and Foken et al. 2006).
 - save high-frequency output to files automatically (```high_frq_output=True```)
 - setting an NaN threshold (```nan_tolerance```), for which no output is created per averaging time (```transform_kwargs = {'nan_tolerance':0.1}```).
 - checking the loaded data for continuity in its timestamps and creating data with continous time stamps filled with ```NaN``` (```load_kwargs = {'fill_with_NA':True}```). If the data contains a gap too large (```load_kwargs = {'max_gap':2*60*60}```), the data chunk is skipped.

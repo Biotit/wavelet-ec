@@ -332,7 +332,7 @@ def int_tests(data, f0, n, f_low, variables_not, calc_na=False):
     #     )
     
     # OGIVE TEST
-    # Ogive test, similar to Charuchittipan 2014, Foken 2006
+    # Ogive test, adjusted from Charuchittipan 2014, Foken 2006
     # Filter for the low frequency band to integrate: f_low <= frequency < f0
     data_ot_filtered = dataf[(np.isnan(dataf['natural_frequency']) == False) & 
                              (dataf['natural_frequency'] >= f_low) & 
