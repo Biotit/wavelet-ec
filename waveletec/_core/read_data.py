@@ -250,7 +250,7 @@ def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True,
         if verbosity > 1: logger.debug(f"lookup before handle_bmmflux_raw_dataset is {lookup}")
         if kw_csv.get('handle_bmmflux_raw_dataset'):
             logger.info('handle_bmmflux_raw_dataset was True, therefore resetting the matching file_pattern and the matching date format.')
-            kw.file_pattern = "([0-9]{8}_[0-9]{6}).*?_3Drot_frc_tempplausadj\\.csv"
+            kw.file_pattern = "timeseries_([0-9]{8}_[0-9]{6}).*?\\.csv"
             kw.date_format = '%Y%m%d_%H%M%S'
             # need to redefine lookup, because bmmflux files always have the
             # mid of the file period in their file name not the beginning
