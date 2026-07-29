@@ -88,7 +88,7 @@ waveletec.process(datetimerange, fileduration, input_path, acquisition_frequency
 ```
 The documentation of process is:
 ``` python
-     """
+"""
     function: process data. (1) gets data, (2) performs wavelet transform, (3) cross calculate variables using conditional_sampling, (4) averages, (5) saves. Implemented as loops to prevent RAM overflow.
     
     call: process()
@@ -96,7 +96,7 @@ The documentation of process is:
     Input:
         * datetimerange (str): date time range from which the data is processed. Format: YYYYMMDDHHMM-YYYYMMDDHHMM
         * fileduration (int): time range that the input files cover in minutes (e.g. 30). Needed inside bufferforfrequency_dwt() for only taking steps in file-size to calculate buffer size. Also necessary to calculate correct file names from bmmflux inside universal_reader().
-        * input_path (str): path to the folder where the input files are located.
+        * input_path (str): path to the folder where the input files are located. Can also be the path to a higher folder with the input files located in a subfolder. However, the folders containing the files are not allowed to have subfolders!
         * acquisition_frequency (int): frequency of the data in Hz. Used as dt = 1/acquisition_frequency. Used to calculate the sampling frequency fs for wavelet decomposition inside of decompose_data() and then passed to universal_wt().
         * covariance (list, default: None): variables to be considered in the calculations as strings in a list. * denotes the covariance. | denotes conditional sampling. Format: e.g. ["w*co2|w*h2o"]. In this example, "w*co2|w*h2o" means: conditionally sample w*co2 depending on w*co2 and w*h2o. This produces the columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, which mean e.g. in the case wco2+wh2o+ that wco2 is sampled when wco2 is positive AND wh2o is positive.
         * cond_samp_both (bool, default True): If True both parts of the formula are conditionally sampled. If False, only the leading part of the formula is sampled. E.g. if False in case of 'w*co2|w*h2o', we get the output columns wco2+wh2o+,wco2-wh2o+,wco2+wh2o-,wco2-wh2o-, stating wco2 being conditionally sampled e.g. for wco2+wh2o+ when wco2 is positiv AND wh2o is positive. If True, we get the output columns wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco2-wh2o-,wh2o+wco2+,wh2o+wco2-,wh2o-wco2+,wh2o-wco2-, hence, we get both, wco2 and wh2o conditionally sampled.

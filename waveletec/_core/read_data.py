@@ -232,7 +232,7 @@ def universal_reader(path, lookup=[], fill=False, fmt={}, onlynumeric=True,
     #print("Check readable files in", path if len(path)<40 else f'{path[:5]}...{path[-30:]}')#, fmt, fkwargs, kwargs)
 
     for path_ in folders:
-        if verbosity > 1: logger.debug(f"Read files from {path_}")
+        logger.debug(f"Read files from {path_}")
         df_td = pd.DataFrame()
 
         # read tips file
