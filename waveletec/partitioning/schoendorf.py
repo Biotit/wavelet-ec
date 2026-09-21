@@ -49,6 +49,7 @@ def _method_statistics_(data, average_period, cols_t_stat, dt,
         * cols_t_stat (list): The columns in the data from which the statistics are being calculated. It makes sense, that its only the conditionally sampled columns.
         * dt (float): Sampling interval of the data (1/sampling frequency). Necessary to recalculate from the number of contigous data for an event to the event time scale. 
         * cols_corr (list): The columns in the data from which the correlations are being calculated.
+        * t_scale_thres (int): For the time scale of events sampled this gives the threshold in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events.
     Return:
         pandas.DataFrame in long format with TIMESTAMP, variable and value. The variables are the method statistics. _t_fract denotes the time fraction of sampled events and _t_scale the average (mean) time scale of sampled events.
     """

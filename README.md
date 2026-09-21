@@ -116,7 +116,7 @@ The documentation of process is:
             * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant as well as correlation coefficients. Note that this setting doubles the amount of averaged data stored.
             * cols_t_stat (list, default see explanation): If method statistics are calculated, then the column names can be given as list over which the time fraction and scale of sampled events are being calculated. By default its all conditionally sampled columns.
             * cols_corr (list, default see explanation): If method statistics are calculated, then the column names can be given as list between which the correlation coefficient is calculated. By default its all unique variables specified within the argument covariance.
-            * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
+            * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
             * save_big_file (bool, default False): Should ONE file be saved containing all cospectra, additionally to the files in the wavelet_full_cospectra folder
             * integrate_all_files (bool, default True): Should ALL files in folder wavelet_full_cospectra be integrated or only the onces recently processed
             * qaqc (bool, default True): If True during integration, the stationarity test for wavelet-based EC (STA) and the ogive test (OG) are performed.
@@ -171,7 +171,7 @@ With corresponding documentation:
                 * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant, as well as correlation coefficients. Note that this setting doubles the amount of averaged data stored.
                 * cols_t_stat (list, default see explanation): If method statistics are calculated, then the column names can be given as list over which the time fraction and scale of sampled events are being calculated. By default its all conditionally sampled columns.
                 * cols_corr (list, default see explanation): If method statistics are calculated, then the column names can be given as list between which the correlation coefficient is calculated. By default its all unique variables specified within the argument covariance.
-                * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
+                * t_scale_thres (int, default 10): If method statistics are calculated then for the time scale of events sampled this gives the threshold in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events. -- See Thomas 2008.
                 * high_frq_output (bool, default not defined --> False): If the high-frequency wavelet-decompositioned (co)-spectra are saved. Use with caution, takes lot of time and disk storage.
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs: Additional arguments passed to the functions. Should include the sampling interval, dt in seconds and further stuff, the process function for this.
@@ -326,15 +326,44 @@ In the process() or main() function the argument ```output_kwargs = {'statistics
 Detail settings include can also be given
 - ```cols_t_stat```: If method statistics are calculated, then the column names can be given as list over which the time fraction and scale of sampled events are being calculated. By default its all conditionally sampled columns.
 - ```cols_corr```: If method statistics are calculated, then the column names can be given as list between which the correlation coefficient is calculated. By default its all unique variables specified within the argument covariance.
-- ```t_scale_thres```: If method statistics are calculated then for the time scale of events sampled this gives the threshold of 0s in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events.
+- ```t_scale_thres```: If method statistics are calculated then for the time scale of events sampled this gives the threshold in the quadrant for which a new event is considered. If e.g. set to 10, then consecutive individual events separated by less than 10 (1/fs) are combined to allow for some stochastic noise and relax the number of very short events.
 
 As an example you might specifiy: ```output_kwargs = {'statistics':True, 'cols_corr':["co2", "h2o"]}```
 
 The output then contains the additional `variable` processed:
-- **`_t_fract`**: Time fraction of sampled events for this flux.
+- **_t_fract**: Time fraction of sampled events for this flux.
 - **_t_scale**: Average time scale of sampled events.
 See for these statistics: Thomas et al. 2008 "Estimating daytime subcanopy respiration from conditional sampling methods applied to multi-scalar high frequency turbulence time series".
 - **_r**: Correlation coefficient between the variables.
+
+
+### Activating the quality control indicators
+In the process() or the integrate_cospectra_from_file() functions the argument ```output_kwargs = {'qaqc':True}``` activates the output of quality control indicators, similar to the stability / steady state test in traditional eddy covariance.
+
+The **stationarity test** was proposed by Coimbra et al. 2025 in the supplementary materials. It compares the integrated flux over the wavelet spectrum up to a smaller integration period T* with the flux after integration to the normal integration period (T, integration_period = 1/fJ). This was derived by Coimbra et al. 2025 from the normal stationarity test by Foken and Wichura (1996).
+With the argument ```n_smallint (int, default 6)``` the ratio of T/T* can be given. Default is 6 = T/T*, hence T* = 1/6 * T. For T = 30min, T* = 5 min
+
+The **ogive test** includes the periods larger than the integration period in its analysis. It analyses if the integrated flux over the frequency bands (ogive, integral of the spectrum) converges, and if the analysis has captured most of the flux. 
+In detail, it calculates the maximum value of the ogive between the integration period and a larger period (lower frequency, ```f_low```, larger wavelet scale J+). This is the maximum flux up to ```f_low```, that was NOT captured by the analysis.
+This value is devided by the normal flux value, i.e. the integrated ogive up the normal integration period.
+The test is based upon Charuchittipan et al. 2014 (and Foken et al 2006), adjusted in regard to the wavelet eddy covariance.
+The variable ```f_low``` should be higher than the lowest available frequency from the wavelet transform (see wt_kwargs and f0).
+So if your using the ogive test, think about specifying ```f0``` in the ```wt_kwargs```. But keep in mind that keeping f0 high, is good for your computation. Too low values increase the computation time and expecially the RAM usage.
+
+Both tests results are given in percent the smaller the better. 
+If x <= 30, its quality control indicator gets 0, if 30 > x <= 100 its 1, and all > 100 are 2.
+
+Also, be aware that the Integral Turbulence Characteristics test is NOT included here. So at best combine the results of these quality control tests with the integral turbulence characteristics test calculated elsewhere.
+
+Hence, as an example its possible to specify (thats the default values): ```"output_kwargs" = {'qaqc':True, 'f_low':1/3276, 'n_smallint':6}```
+And, e.g. ```"wt_kwargs":{'f0':(1/(1*60*60))}```. 
+
+The output file of the integrated cospectrum (not the cospectrum itself) then contains further columns ending with:
+- **_STA**: Result of the stability test in %.
+- **_OG**: Result of the ogive test in %.
+- **_QAQC_STA**: Quality control indicator of the stability test.
+- **_QAQC_OG**: Quality control indicator of the ogive test.
+
 
 ### Using the command line / terminal
 
