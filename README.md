@@ -383,6 +383,7 @@ And, e.g. ```"output_kwargs":{'part_ET_method':("Direct", "Ratio", "UpDown")}```
 
 The output file of the partitioning (Output Format Partitioned) then contains the E and T columns ending with **_direct**, **_ratio**, and **_UpDown**, to indicate from which method the results where coming.
 
+Be aware that this partitioning does NOT include a filtering by quality control indicators (see quality control indicators), nor does it filter by tresholds about the number of datapoints per quadrant (see method statistics).
 
 ### Using the command line / terminal
 
