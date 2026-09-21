@@ -8,11 +8,19 @@ import numpy as np
 # project modules
 from .._core.commons import __input_to_series__
 
-def ETpartition_DWCS(data=None, ET='ET', T='T', E='E', H2O='wh2o', DownwardH2O='DownwardH2O',
-                  CS_H2O_H2Opos_CO2neg='wh2o+wco2-', CS_H2O_H2Oneg_CO2neg='wh2o-wco2-', 
-                  CS_H2O_H2Oneg_CO2pos='wh2o-wco2+', CS_H2O_H2Opos_CO2pos='wh2o+wco2+'): #NIGHT=None):
+def ETpartition_DWCS(data=None, 
+                     PartOption=("Direct", "Ratio", "UpDown"),
+                     ET='ET', T='T', E='E', H2O='wh2o', 
+                     DownwardH2O='DownwardH2O',
+                     CS_H2O_H2Opos_CO2neg='wh2o+wco2-', 
+                     CS_H2O_H2Oneg_CO2neg='wh2o-wco2-', 
+                     CS_H2O_H2Oneg_CO2pos='wh2o-wco2+', 
+                     CS_H2O_H2Opos_CO2pos='wh2o+wco2+'):
     logger = logging.getLogger('wvlt.partition.ETpartition_DWCS')
     logger.debug('Running ETpartition_DWCS, partitioning ET.')
+    
+    
+    if data is None: data = pd.DataFrame()
     
     if isinstance(data, str): data = pd.read_file(data)
     else: data = data.copy()
@@ -23,17 +31,50 @@ def ETpartition_DWCS(data=None, ET='ET', T='T', E='E', H2O='wh2o', DownwardH2O='
     CS_H2O_H2Oneg_CO2pos = __input_to_series__(data, CS_H2O_H2Oneg_CO2pos)
     CS_H2O_H2Opos_CO2pos = __input_to_series__(data, CS_H2O_H2Opos_CO2pos)
     
-    if data is None: data = pd.DataFrame()
-    #if NIGHT is not None:
-    #    islight = np.where((np.isnan(data[NIGHT]) == False) * (data[NIGHT]), 0, 1)
-    #else:
-    #    islight = np.array([1] * len(data))
     
-    data[ET] = H2O
-    data[T] = CS_H2O_H2Opos_CO2neg
-    #logger.debug(f'T is {data[T]}')
-    data[E] = CS_H2O_H2Opos_CO2pos
-    data[DownwardH2O] = CS_H2O_H2Oneg_CO2neg + CS_H2O_H2Oneg_CO2pos
+    # create ET only from positive wh2o values, otherwise downward water motion
+    data[ET] = H2O.where(H2O >= 0)
+    
+    # 3 different methods to partition
+    if "Direct" in PartOption:
+        logger.debug('Partitioning with direct method.')
+        
+        # Partioning Option 1: "Direct"
+        # Assign wh2o+wco2- as T, wh2o+wco2+ as 
+        # and all with negative wh2o as downward h2o
+        # this can e.g. cause E+T > ET, because downward motions are not respected.
+        data[T+"_direct"] = CS_H2O_H2Opos_CO2neg
+        #
+        data[E+"_direct"] = CS_H2O_H2Opos_CO2pos
+        data[DownwardH2O+"_direct"] = CS_H2O_H2Oneg_CO2neg + CS_H2O_H2Oneg_CO2pos
+    
+    if "Ratio" in PartOption:
+        logger.debug('Partitioning with ratio method.')
+        
+        # Partitioning Option 2: "Ratio"
+        # Start like in Option 1 and then take the ratio of E and T to partition.
+        upflux = (CS_H2O_H2Opos_CO2neg+CS_H2O_H2Opos_CO2pos).replace(0, np.nan)
+        TtoETratio = CS_H2O_H2Opos_CO2neg/upflux
+        data[T+"_ratio"] = data[ET]*TtoETratio
+        data[E+"_ratio"] = data[ET]-data[T+"_ratio"]
+    
+    if "UpDown" in PartOption:
+        logger.debug('Partitioning with UpDown method.')
+        
+        # Partition Option 3: "UpDown"
+        # Combine the up and downdrafts contributing to the same flux
+        
+        sum_E = CS_H2O_H2Opos_CO2pos + CS_H2O_H2Oneg_CO2neg
+        sum_T = CS_H2O_H2Opos_CO2neg + CS_H2O_H2Oneg_CO2pos
+        
+        # Valid conditions: ET >= 0 AND 0 <= sum <= ET
+        valid_E = (data[ET] >= 0) & (sum_E >= 0) & (sum_E <= data[ET])
+        valid_T = (data[ET] >= 0) & (sum_T >= 0) & (sum_T <= data[ET])
+        
+        # Assign values (returns NaN if valid_E / valid_T is False or if ET is NaN)
+        data[E+"_UpDown"] = sum_E.where(valid_E)
+        data[T+"_UpDown"] = sum_T.where(valid_T)
+    
     logger.debug('Finished ETpartition_DWCS, partitioned ET.')
     return data
 

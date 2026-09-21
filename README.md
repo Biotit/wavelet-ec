@@ -88,7 +88,7 @@ waveletec.process(datetimerange, fileduration, input_path, acquisition_frequency
 ```
 The documentation of process is:
 ``` python
-"""
+    """
     function: process data. (1) gets data, (2) performs wavelet transform, (3) cross calculate variables using conditional_sampling, (4) averages, (5) saves. Implemented as loops to prevent RAM overflow.
     
     call: process()
@@ -113,6 +113,7 @@ The documentation of process is:
         * meta (dict, default {}): Header lines in the output files. Get filled successively during the code run.
         **kwargs: Further arguments can be passed as kwargs. Pass e.g. as load_kwargs = {'handle_bmmflux_raw_dataset':True}. Important settings include:
         * output_kwargs:
+            * part_ET_method (tuple, default ("Direct", "Ratio", "UpDown")): If ET is partitioned, the methods mentioned in the tuple are used for partitioning. Available are: "Direct": Assign wh2o+wco2- as T, wh2o+wco2+ as E and all with negative wh2o as downward h2o; "Ratio": Start like in Option 1 and then take the ratio of E and T to partition ET; "UpDown": Combine the up and downdrafts contributing to the same flux, i.e. E = wh2o+co2+ + wh2o-co2-, T = wh2o+co2- AND wh2o-co2+, but only valid if smaller than ET and larger than 0.
             * statistics (bool, default not defined --> False): If method statistics should be calculated and saved within the output. This includes the time fraction and scale of sampled events per quadrant as well as correlation coefficients. Note that this setting doubles the amount of averaged data stored.
             * cols_t_stat (list, default see explanation): If method statistics are calculated, then the column names can be given as list over which the time fraction and scale of sampled events are being calculated. By default its all conditionally sampled columns.
             * cols_corr (list, default see explanation): If method statistics are calculated, then the column names can be given as list between which the correlation coefficient is calculated. By default its all unique variables specified within the argument covariance.
@@ -223,7 +224,7 @@ waveletec.cs_partition_NEE_ET(site_name, output_folderpath, NEE=True, ET=True,
         * site_name (str): Site name of the data to be loaded in. Nessessary to construct file names to be loaded. See variable output_folderpath for more information.
         * output_folderpath (str): Path to folder where the input and output files files are saved. Inside this folder there has to be a file with the pattern os.path.join(output_folderpath, f"{site_name}_CDWT_fulldata_integrated_*min.csv"). Usually produced by integrate_full_spectra_into_file() or by process().
         * NEE (bool, default True): If True, NEE is partitioned.
-        * ET (bool, default True): If True, ET is partitioned.
+        * ET (bool or tuple, default True): If True, ET is partitioned. If tuple, the methods mentioned in the tuple are used for partitioning, e.g. ("Direct", "Ratio", "UpDown"). Available are: "Direct": Assign wh2o+wco2- as T, wh2o+wco2+ as E and all with negative wh2o as downward h2o; "Ratio": Start like in Option 1 and then take the ratio of E and T to partition ET; "UpDown": Combine the up and downdrafts contributing to the same flux, i.e. E = wh2o+co2+ + wh2o-co2-, T = wh2o+co2- AND wh2o-co2+, but only valid if smaller than ET and larger than 0.
         * integration_period (int, default None): For filename. And: If also run_time specified, if different files with different integration_period inside the output_folderpath, this helps to find the correct file for partitioning. In those functions it is the integration period of the wavelength signal in s. Works as a high-pass filter for the wavelet cospectra (as fJ = 1/integration_period) inside integrate_cospectra(). Also relevant for the filename of saved data. It gets constructed similar to os.path.join(output_folderpath, str(site_name)+f'_CDWT_partitioning_H2O.csv' dependent on the used partitioning algorithm.
         * run_time (str, default None): For filename. And: If also integration_period specified, if different files with different run_times (e.g. from process function) inside the output_folderpath, this helps to find the correct file for partitioning.
         * variables_available (list, default ['h2o', 'wh2o+wco2-', 'wh2o-wco2-', 'wh2o-wco2+', 'wh2o+wco2+', 'co2', 'wco2-wh2o+', 'wco2-wh2o-']): From which variables are data available. Necessary to test, if partitioning algorithms can be run.
@@ -332,7 +333,7 @@ As an example you might specifiy: ```output_kwargs = {'statistics':True, 'cols_c
 
 The output then contains the additional `variable` processed:
 - **_t_fract**: Time fraction of sampled events for this flux.
-- **_t_scale**: Average time scale of sampled events.
+- **_t_scale**: Average time scale of sampled events in seconds.
 See for these statistics: Thomas et al. 2008 "Estimating daytime subcanopy respiration from conditional sampling methods applied to multi-scalar high frequency turbulence time series".
 - **_r**: Correlation coefficient between the variables.
 
