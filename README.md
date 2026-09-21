@@ -12,7 +12,7 @@ Pedro H H Coimbra, Benjamin Loubet, Olivier Laurent, Matthias Mauder, Bernard He
 
 ## Version NEE_ET
 This fork by Daniel Schöndorf contains some additions:
-- the possibility to partition ET in addition to NEE
+- the possibility to partition ET in addition to NEE, with three different methods
 - reading bmmflux high-frequency corrected output files
 - density correction for open-path analysers (be careful with units of input variables, currently best adjusted to bmmflux output)
 - calculating the time fraction and scale of the events conditionally sampled in each quadrant and the correlation coefficient for each frequency
@@ -364,6 +364,24 @@ The output file of the integrated cospectrum (not the cospectrum itself) then co
 - **_OG**: Result of the ogive test in %.
 - **_QAQC_STA**: Quality control indicator of the stability test.
 - **_QAQC_OG**: Quality control indicator of the ogive test.
+
+
+### Partitioning of ET
+After wavelet decomposition, conditional sampling, and integration of the time series, NEE and ET can get partitioned.
+The conditionally sampled fluxes already contain all up- and downdraft quadrants (see below Output Format Integrated Spectra).
+Depending on the formula specified this includes h2o fluxes or co2 fluxes or both (see ```cond_samp_both``` and ```varstorun``` as variables in the process function).
+
+If activated (see ```partition``` in the ```process``` function), in the partitioning step these quadrant fluxes get combined to provide values for E and T (see function ```cs_partition_NEE_ET```).
+For ET three methods are available (specified in the ```output_kwargs``` with ```part_ET_method```):
+- **Direct**: Assign wh2o+wco2- as T, wh2o+wco2+ as E and all with negative wh2o as downward h2o
+- **Ratio**: Start like in Option 1 and then take the ratio of E and T to partition ET (i.e. T = h2o+co2-/(h2o+co2- + h2o+co2+))
+- **UpDown**: Combine the up and downdrafts contributing to the same flux, i.e. E = wh2o+co2+ + wh2o-co2-, T = wh2o+co2- AND wh2o-co2+, but only valid if smaller than ET and larger than 0.
+For all methods with a negative wh2o is ET is set to NaN.
+
+Hence, as an example its possible to specify (thats the default values): ```"output_kwargs" = {'qaqc':True, 'f_low':1/3276, 'n_smallint':6}```
+And, e.g. ```"output_kwargs":{'part_ET_method':("Direct", "Ratio", "UpDown")}```. 
+
+The output file of the partitioning (Output Format Partitioned) then contains the E and T columns ending with **_direct**, **_ratio**, and **_UpDown**, to indicate from which method the results where coming.
 
 
 ### Using the command line / terminal
