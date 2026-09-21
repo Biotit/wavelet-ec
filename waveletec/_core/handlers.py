@@ -977,6 +977,7 @@ def process(datetimerange, fileduration, input_path, acquisition_frequency,
             * n_smallint (int, default 6): For the stationarity test, the ratio of the period duration of the lower integration period (T* < T) to the normal period duration (T = 1/fJ). Typically 6, following the traditional Stationarity test (5min/30min).
         * load_kwargs:
             * handle_bmmflux_raw_dataset (bool, default False): Was bmmflux used for pre-processing?
+            * handle_eddypro_raw_dataset (bool, default True): Was EddyPro used for pre-processing? Its not necessary to specify as the default is True. See code in read_data.py.
             * safe_load (bool, default True): If True disable calculations and outputs if no full buffer could be applied and the wavelet decomposition is influences by the cone of influence.
             * fill_with_NA (bool, default True): If the data is not continous, shall it be filled with NA, to make the timestamps continous. 
             * max_gap (int, default 2*60*60): Allowed maximum gap in the data in seconds. If larger, an error is raised.
