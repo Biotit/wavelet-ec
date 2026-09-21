@@ -294,7 +294,7 @@ def integrate():
     logging.basicConfig(level=args.verbosity.upper(),
                         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     passed_args = {"root": os.path.join(args.folder, 'wavelet_full_cospectra'),
-                   "f0": 1/args.integration_period,
+                   "fJ": 1/args.integration_period,
                    "dst_path": args.dst_path,
                    **custom_params}
     log_args(vars(args))

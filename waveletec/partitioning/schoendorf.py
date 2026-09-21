@@ -234,14 +234,14 @@ def time_scales(df, group_cols, dt, threshold=10):
 
 
 
-def int_tests(data, f0, n, f_low, variables_not, calc_na=False):
+def int_tests(data, fJ, n, f_low, variables_not, calc_na=False):
     """
     function: Calculates the Stationarity (STA), and Ogive Test (OG) and assigns stepped QA/QC flags. It checks for discrete wavelet frequency band overlaps and logs safety warnings accordingly.
     call: int_tests()
     Input:
         * data (pandas.DataFrame): Long-format wavelet-decomposed data containing 'natural_frequency', 'variable', 'TIMESTAMP', and 'value' columns.
-        * f0 (float): Baseline integration frequency threshold (Hz).
-        * n (int or float): For the stationarity test, the ratio of the period duration of the lower integration period (T* < T) to the normal period duration (T = 1/f0). Typically 6, following the traditional Stationarity test (5min/30min).
+        * fJ (float): Baseline integration frequency threshold (Hz).
+        * n (int or float): For the stationarity test, the ratio of the period duration of the lower integration period (T* < T) to the normal period duration (T = 1/fJ). Typically 6, following the traditional Stationarity test (5min/30min).
         * f_low (float): The lower frequency for the ogive test
         * variables_not (str or tuple of str): Suffix or tuple of suffixes passed to .str.endswith() to exclude specific variables from calculation.
         * calc_na (bool, default False): if False, if any of the frequencies has NaN values, the integrated flux is set NA instead of integrating over only the remaining frequencies (0 if all frequencies have NaN values).
@@ -253,7 +253,7 @@ def int_tests(data, f0, n, f_low, variables_not, calc_na=False):
     logger.debug("Calculating Stationarity and Integration Scale Test")
     
     # PRE-CALCULATION for Stationarity test
-    f_high = 1/((1/f0)/n) # higher frequency  
+    f_high = 1/((1/fJ)/n) # higher frequency  
     
     # FILTER DATA TO RELEVANT VARIABLES
     dataf = data[~data['variable'].str.endswith(variables_not)]
@@ -273,17 +273,17 @@ def int_tests(data, f0, n, f_low, variables_not, calc_na=False):
         higher_vals = freq[freq >= f_low]
         lower_vals = freq[freq < f_low]
         
-        lower_valsf0 = freq[freq < f0]
+        lower_valsfJ = freq[freq < fJ]
         
         # Safety check for edge cases
         if higher_vals.size > 0 and lower_vals.size > 0:
             max_band_high_freq = higher_vals.min() # highest frequency band: max frequency border
             max_band_low_freq = lower_vals.max() # highest frequency band: min frequency border
             
-            max_band_low_freqf0 = lower_valsf0.max()
+            max_band_low_freqfJ = lower_valsfJ.max()
             
-            if max_band_low_freq == max_band_low_freqf0:
-                logger.warning(f"Specified lower integration frequency for OG was {f_low} Hz ({1/f_low} s as period duration). From available frequencies of the wavelet transform integrate from highest frequency up to INCLUDING the frequency band from {max_band_high_freq} Hz ({1/max_band_high_freq} s) to {max_band_low_freq} Hz ({1/max_band_low_freq} s). This corresponds to the same frequency band as the normal integration frequency f0 {f0}. The test will by definition equal to 0. Please decrease lower integration frequency f_low for OG to be corrsponding to a lower frequency band than f0. Lower than {max_band_low_freqf0}.")
+            if max_band_low_freq == max_band_low_freqfJ:
+                logger.warning(f"Specified lower integration frequency for OG was {f_low} Hz ({1/f_low} s as period duration). From available frequencies of the wavelet transform integrate from highest frequency up to INCLUDING the frequency band from {max_band_high_freq} Hz ({1/max_band_high_freq} s) to {max_band_low_freq} Hz ({1/max_band_low_freq} s). This corresponds to the same frequency band as the normal integration frequency fJ {fJ}. The test will by definition equal to 0. Please decrease lower integration frequency f_low for OG to be corrsponding to a lower frequency band than fJ. Lower than {max_band_low_freqfJ}.")
             
             if (1/f_low) <= (((1/max_band_high_freq)+(1/max_band_low_freq))/2):
                 logger.warning(f"Specified lower integration frequency for OG was {f_low} Hz ({1/f_low} s as period duration). From available frequencies of the wavelet transform integrate from highest frequency up to INCLUDING the frequency band from {max_band_high_freq} Hz ({1/max_band_high_freq} s) to {max_band_low_freq} Hz ({1/max_band_low_freq} s). Please make sure you know what you're doing - potentially changing the integration frequency slightly below {max_band_high_freq} Hz ({1/max_band_high_freq} s) or {max_band_low_freq} Hz ({1/max_band_low_freq} s).")
@@ -295,11 +295,11 @@ def int_tests(data, f0, n, f_low, variables_not, calc_na=False):
 
     # STATIONARITY TEST
     # normal integration
-    data0 = (dataf[(np.isnan(dataf['natural_frequency']) == False) * (dataf['natural_frequency'] >= f0)]
+    data0 = (dataf[(np.isnan(dataf['natural_frequency']) == False) * (dataf['natural_frequency'] >= fJ)]
         .groupby(['variable', 'TIMESTAMP'])['value']
         .agg(lambda x: x.sum(skipna=calc_na))
         .reset_index()
-        .rename(columns={'value': 'value_f0'})
+        .rename(columns={'value': 'value_fJ'})
         .set_index(['variable', 'TIMESTAMP'])
         )
     
@@ -314,11 +314,11 @@ def int_tests(data, f0, n, f_low, variables_not, calc_na=False):
     
     # INTEGRATION SCALE TEST (adjusted ogive test with absolute values)
     # normal integration with ABSOLUTE values
-    # data0_abs = (dataf[(np.isnan(dataf['natural_frequency']) == False) * (dataf['natural_frequency'] >= f0)]
+    # data0_abs = (dataf[(np.isnan(dataf['natural_frequency']) == False) * (dataf['natural_frequency'] >= fJ)]
     #     .groupby(['variable', 'TIMESTAMP'])['value']
     #     .agg(lambda x: abs(x).sum(skipna=calc_na))
     #     .reset_index()
-    #     .rename(columns={'value': 'value_f0_abs'})
+    #     .rename(columns={'value': 'value_fJ_abs'})
     #     .set_index(['variable', 'TIMESTAMP'])
     #     )
     
@@ -333,10 +333,10 @@ def int_tests(data, f0, n, f_low, variables_not, calc_na=False):
     
     # OGIVE TEST
     # Ogive test, adjusted from Charuchittipan 2014, Foken 2006
-    # Filter for the low frequency band to integrate: f_low <= frequency < f0
+    # Filter for the low frequency band to integrate: f_low <= frequency < fJ
     data_ot_filtered = dataf[(np.isnan(dataf['natural_frequency']) == False) & 
                              (dataf['natural_frequency'] >= f_low) & 
-                             (dataf['natural_frequency'] < f0)]
+                             (dataf['natural_frequency'] < fJ)]
     data_ot_sorted = data_ot_filtered.sort_values(by='natural_frequency', ascending=False)
     
     # Helper function to track cumulative max safely matching calc_na setup
@@ -365,11 +365,11 @@ def int_tests(data, f0, n, f_low, variables_not, calc_na=False):
     datanew = datanew.join(data_ot_res, how='left').reset_index()
     
     # CALCULATE STATISTICS
-    datanew['STA'] = abs((datanew['value_f_high'] - datanew['value_f0']) / datanew['value_f0']) * 100
-    # datanew['IST'] = (datanew['value_f_lowabs'] - datanew['value_f0_abs']) / datanew['value_f0_abs'] * 100
+    datanew['STA'] = abs((datanew['value_f_high'] - datanew['value_fJ']) / datanew['value_fJ']) * 100
+    # datanew['IST'] = (datanew['value_f_lowabs'] - datanew['value_fJ_abs']) / datanew['value_fJ_abs'] * 100
     # Force any tiny negative floating-point noise (e.g. -0.0000000000000119009068481075) to be exactly 0
     # datanew['IST'] = datanew['IST'].clip(lower=0)
-    datanew['OG'] = abs(datanew['max_abs_cumsum'] / datanew['value_f0']) * 100
+    datanew['OG'] = abs(datanew['max_abs_cumsum'] / datanew['value_fJ']) * 100
     
     # QUALITY FLAGS
     sta_conditions = [
