@@ -502,6 +502,9 @@ TIMESTAMP,ET,T,E,DownwardH2O,NEE,GPP,Reco
 ## Example
 
 For an example follow the [demonstration.ipynb](https://github.com/pedrohenriquecoimbra/wavelet-ec/blob/main/sample/FR-Gri_20220514/demonstration.ipynb) and [example.ipynb](https://github.com/pedrohenriquecoimbra/wavelet-ec/blob/main/sample/FR-Gri_20220514/example.ipynb) files.
+Be aware that these examples run with the new version.
+However, new features such as the partitioning of ET, are not shown.
+For the new features please use the documentation of the functions.
 
 ## Flow chart
 

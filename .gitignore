@@ -9,8 +9,8 @@ waveletec.egg-info/*
 scripts/__pycache__/*
 sample/**/input/20Hz/*.csv
 sample/**/output/eddypro_raw_datasets/level_6/*.txt
-# sample/*/output/wavelet_flux_*
-# sample/*/output/wavelet_flux*
+sample/*/output/wavelet_flux_*
+sample/*/output/wavelet_flux*
 sample/*/output/history/*
 sample/*/test*
 
