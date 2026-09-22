@@ -1,0 +1,27 @@
+acquisition_frequency: 20
+average_period: 30min
+cond_samp_both: false
+covariance:
+- w*co2|w*h2o
+datetimerange: 20220513T0000-20220516T0000
+fileduration: 30
+high_frq_output: false
+input_path: /home/daniel/Dokumente/SyncDokumente/07_Studium/Master/Masterarbeit/Data/04_Code/01_Packages/wavec/wavelet_ec/sample/FR-Gri_20220514/output/eddypro_raw_datasets/level_6
+integration_period: null
+kwargs:
+  correction_kwargs: {}
+  site_name: FR-Gri_sample
+  variables_available:
+  - u
+  - v
+  - w
+  - co2
+  - h2o
+meta: {}
+method: dwt
+output_folderpath: /home/daniel/Dokumente/SyncDokumente/07_Studium/Master/Masterarbeit/Data/04_Code/01_Packages/wavec/wavelet_ec/sample/FR-Gri_20220514/output/wavelet_flux
+overwrite: false
+partition: null
+processing_time_duration: 3h
+sitename: '00000'
+wt_kwargs: {}

@@ -467,8 +467,10 @@ or corresponding to the specified ```integration_period``` (```fJ = 1/integratio
 Hence, ```fJ``` works as a high-pass filter for the wavelet cospectrum.
 BUT: From available frequency bands the the band containing the target frequency is taken **fully**. Hence, integrating takes potentially also **more (lower) frequencies** into account than targeted. Please look at the log output to see up to which frequency integration was performed.
 
-In general, in the cospectra and the integrated spectra, the variables containing
-```_qc``` specify quality control. In case of discrete wavelet transform (dwt) these
+Please be aware that all averaged data over time, ```TIMESTAMP``` denotes the **starting time** of the interval.
+Hence, for half-hourly data (average_period="30min") and the TIMESTAMP 2025-04-07 08:00:00 the averaging interval did cover up to 2025-04-07 08:29:59.9
+
+In general, in the cospectra and the integrated spectra, the variables containing ```_qc``` specify quality control. In case of discrete wavelet transform (dwt) these
 show the amount of NaN-values (in the cospectra the ratio, in the integrated spectra summed up over the frequencies).
 In case of continous wavelet transform, they also consider the amount of values outside of the cone of influence.
 
@@ -486,6 +488,11 @@ TIMESTAMP,co2,co2_qc,h2o,h2o_qc,w,w_qc,wco2,wco2+wh2o+,wco2+wh2o-,wco2-wh2o+,wco
 ```
 
 ### Output Format Partitioned
+
+Please be aware that all averaged data over time, ```TIMESTAMP``` denotes the **starting time** of the interval.
+Hence, for half-hourly data (average_period="30min") and the TIMESTAMP 2025-04-07 08:00:00 the averaging interval did cover up to 2025-04-07 08:29:59.9
+
+Further see "Partitioning of ET" what some of the ET output in this file means.
 
 ```cs
 TIMESTAMP,ET,T,E,DownwardH2O,NEE,GPP,Reco
